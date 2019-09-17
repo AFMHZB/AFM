@@ -45,6 +45,16 @@ class NeaSNOMConnect:
     @property
     def neaClient(self):
         return self._neaClient
+    
+    def pause(self):
+        if self._scan:
+            if not self._scan.isSuspended():
+                self._scan.Suspend()
+    
+    def resume(self):
+        if self._scan:
+            if self._scan.isSuspended():
+                self._scan.Resume()
 
     def client_version(self):
         return self.neaMic.ClientVersion
@@ -74,18 +84,18 @@ class NeaSNOMConnect:
         if self._connected:
             if not self.in_contact():
                 self.neaMic.AutoApproach(0.8)#80% setpoint
-            _scan = self.neaMic.PrepareAfmScan()
-            _scan.set_CenterX(x0)
-            _scan.set_CenterY(y0)
-            _scan.set_ScanAreaWidth(dx)
-            _scan.set_ScanAreaHeight(dy)
-            _scan.set_ResolutionColumns(px)
-            _scan.set_ResolutionRows(py)
-            _scan.set_ScanAngle(angle)
-            _scan.set_SamplingTime(t_int)
+            self._scan = self.neaMic.PrepareAfmScan()
+            self._scan.set_CenterX(x0)
+            self._scan.set_CenterY(y0)
+            self._scan.set_ScanAreaWidth(dx)
+            self._scan.set_ScanAreaHeight(dy)
+            self._scan.set_ResolutionColumns(px)
+            self._scan.set_ResolutionRows(py)
+            self._scan.set_ScanAngle(angle)
+            self._scan.set_SamplingTime(t_int)
             #insert warning if too fast maybe
             self.print_parameter(_scan)
-            _image = _scan.Start()
+            _image = self._scan.Start()
             _channel = {}
             for c in channel_names:
                 _channel[c] = _image.GetChannel(c)

@@ -55,7 +55,6 @@ def asNumpyArray(netArray):
 
 
 class Scan:
-    
     def __init__(self, scan_dict):
         self.hdf5_dict = {}
         self.hdf5_path = os.getcwd()
@@ -75,8 +74,15 @@ class Scan:
         return self
     
     def __exit__(self, exc_type, exc_val, exc_tb):
-        with h5py.File(self.hdf5_path, 'w') as hdf:
-            self.dict_to_hdf5(hdf, self.hdf5_dict)
+        try:
+            with h5py.File(self.hdf5_path, 'w') as hdf:
+                self.dict_to_hdf5(hdf, self.hdf5_dict)
+        except OSError:
+            pass
+        try:
+            self.neaConnect.__exit__(exc_type, exc_val, exc_tb)
+        except AttributeError:
+            pass
         return
     
     def dict_to_hdf5(self, group, adict):
@@ -90,6 +96,12 @@ class Scan:
                 except TypeError:
                     #special type for strings
                     group.create_dataset(key, data=np.array(value, dtype=h5py.special_dtype(vlen=bytes)))
+                    
+    def pause(self):
+        try:
+            self.neaConnect.pause()
+        except AttributeError:
+            print('No Measurement running.')
                     
     def start_scan(self, csv_path=''):
         now = datetime.now().strftime('%Y-%m-%d %H%M')
@@ -119,68 +131,80 @@ class Scan:
         scan_name = '{} {}_{}_{}µm_{}px'.format(now, ops, self.hdf5_dict['Info']['project'], scanarea, pixelarea)
         self.hdf5_path = os.path.join(self.hdf5_dict['Info']['Measurement']['dest_path'], scan_name + '.hdf5')
         
-        new_meas = csv_path == ''
+        new_meas = (csv_path == '')
         
-        with NeaSNOMConnect('192.168.89.44', os.path.join(os.getcwd(), 'updates/SDK/'), con_needed = new_meas) as neaConnect:
+        self.neaConnect = NeaSNOMConnect('192.168.89.44', os.path.join(os.getcwd(), 'updates/SDK/'), con_needed = new_meas)
             
-            if new_meas:
-                self.hdf5_dict['Info']['Version'] = {}
-                self.hdf5_dict['Info']['Version']['Client'] = neaConnect.client_version()
-                self.hdf5_dict['Info']['Version']['Server'] = neaConnect.server_version()
-                afm_data = neaConnect.scanAFM(**self.hdf5_dict['Info']['AFM'], channel_names = self.channel)
-                data_path = os.path.join(self.hdf5_dict['Info']['Measurement']['dest_path'], now + '_CSV')
-                os.makedirs(data_path, exist_ok = True)
-                for k in afm_data.keys():
-                    afm_data[k] = asNumpyArray(afm_data[k])
-                    np.savetxt(os.path.join(data_path, k + '.csv'), afm_data[k], delimiter=',')
-            else:
-                afm_data = {}
-                for root, dirs, files in os.walk(csv_path):
-                    for f in files:
-                        c = f.split('.')[0]
-                        afm_data[c] = np.loadtxt(os.path.join(root, f), delimiter=',')
-                        
-                self.hdf5_dict['Data']['AFM'] = afm_data
-                
-            if 'Z' in afm_data.keys() and 'R-Z' in afm_data.keys():
-                ratio = self.hdf5_dict['Info']['AFM']['dx'] / self.hdf5_dict['Info']['AFM']['px'] #um / px
-                print(self.hdf5_dict['Info']['Characteristics'])
-                f = FindBacteria(afm_data['Z'], afm_data['R-Z'], self.hdf5_dict['Info']['Characteristics'], ratio)
-                data, top = f.data_correction(self.hdf5_dict['Info']['AFM']['hlimit'] * 10**(-6))
-                bac_found = f.find_bacteria(data, top)
-                bact_dict = f.get_dict()
-                if bac_found:
-                    for key in bact_dict['Bacteria'].keys():
-                        #get the absolute coords for the relative points
-                        for k in bact_dict['Bacteria'][key]['Points'].keys():
-                            newx = ((bact_dict['Bacteria'][key]['Points'][k]['Coord'][0] * ratio) - (self.hdf5_dict['Info']['AFM']['dx'] / 2)) + self.hdf5_dict['Info']['AFM']['x0']
-                            newy = ((bact_dict['Bacteria'][key]['Points'][k]['Coord'][1] * ratio) - (self.hdf5_dict['Info']['AFM']['dy'] / 2)) + self.hdf5_dict['Info']['AFM']['y0']
-                            bact_dict['Bacteria'][key]['Points'][k]['Coord'] = (newx, newy)
-                        
-                        if new_meas:
-                            (x0, y0) = bact_dict['Bacteria'][key]['Points']['Center']['Coord']
-                            dxy = bact_dict['Bacteria'][key]['dxy']
-                            res = bact_dict['Bacteria'][key]['pxy']
+        if new_meas:
+            self.hdf5_dict['Info']['Version'] = {}
+            self.hdf5_dict['Info']['Version']['Client'] = self.neaConnect.client_version()
+            self.hdf5_dict['Info']['Version']['Server'] = self.neaConnect.server_version()
+            afm_data = self.neaConnect.scanAFM(**self.hdf5_dict['Info']['AFM'], channel_names = self.channel)
+            data_path = os.path.join(self.hdf5_dict['Info']['Measurement']['dest_path'], now + '_CSV')
+            os.makedirs(data_path, exist_ok = True)
+            for k in afm_data.keys():
+                afm_data[k] = asNumpyArray(afm_data[k])
+                np.savetxt(os.path.join(data_path, k + '.csv'), afm_data[k], delimiter=',')
+        else:
+            afm_data = {}
+            for root, dirs, files in os.walk(csv_path):
+                for f in files:
+                    c = f.split('.')[0]
+                    afm_data[c] = np.loadtxt(os.path.join(root, f), delimiter=',')
+                    
+            self.hdf5_dict['Data']['AFM'] = afm_data
+            
+        if 'Z' in afm_data.keys() and 'R-Z' in afm_data.keys():
+            ratio = self.hdf5_dict['Info']['AFM']['dx'] / self.hdf5_dict['Info']['AFM']['px'] #um / px
+            f = FindBacteria(afm_data['Z'], afm_data['R-Z'], self.hdf5_dict['Info']['Characteristics'], ratio)
+            data, top = f.data_correction(self.hdf5_dict['Info']['AFM']['hlimit'] * 10**(-6))
+            bac_found = f.find_bacteria(data, top)
+            bact_dict = f.get_dict()
+            if bac_found:
+                for key in bact_dict['Bacteria'].keys():
+                    #get the absolute coords for the relative points
+                    for k in bact_dict['Bacteria'][key]['Points'].keys():
+                        newx = ((bact_dict['Bacteria'][key]['Points'][k]['Coord'][0] * ratio) - (self.hdf5_dict['Info']['AFM']['dx'] / 2)) + self.hdf5_dict['Info']['AFM']['x0']
+                        newy = ((bact_dict['Bacteria'][key]['Points'][k]['Coord'][1] * ratio) - (self.hdf5_dict['Info']['AFM']['dy'] / 2)) + self.hdf5_dict['Info']['AFM']['y0']
+                        bact_dict['Bacteria'][key]['Points'][k]['Coord'] = (newx, newy)
+                    
+                    if new_meas:
+                        (x0, y0) = bact_dict['Bacteria'][key]['Points']['Center']['Coord']
+                        dxy = bact_dict['Bacteria'][key]['dxy']
+                        res = bact_dict['Bacteria'][key]['pxy']
 
-                            spec_data = neaConnect.scanAFM(x0, y0, dxy, dxy, res, res, 0, self.hdf5_dict['Info']['AFM']['t_int'], self.hdf5_dict['Info']['AFM']['setpoint'],
-                                                        self.hdf5_dict['Info']['AFM']['hlimit'], channel_names = self.channel)
-                            
-                            bact_dict['Bacteria'][key]['AFM'] = {}
-                            for k in spec_data.keys():
-                                spec_data[k] = asNumpyArray(spec_data[k])
-                                bact_dict['Bacteria'][key]['AFM'][k] = spec_data[k]
-                            
+                        spec_data = self.neaConnect.scanAFM(x0, y0, dxy, dxy, res, res, 0, self.hdf5_dict['Info']['AFM']['t_int'], self.hdf5_dict['Info']['AFM']['setpoint'],
+                                                    self.hdf5_dict['Info']['AFM']['hlimit'], channel_names = self.channel)
+                        
+                        bact_dict['Bacteria'][key]['AFM'] = {}
+                        for k in spec_data.keys():
+                            spec_data[k] = asNumpyArray(spec_data[k])
+                            bact_dict['Bacteria'][key]['AFM'][k] = spec_data[k]
+                        
+                        f.set_data(spec_data['Z'], spec_data['R-Z'])
+                        data, top = f.data_correction(self.hdf5_dict['Info']['AFM']['hlimit'] * 10**(-6))
+                        bac_still_there = f.find_bacteria(data, top)
+                        small_bact_dict = f.get_dict()
+                        
+                        if bac_still_there:
+                            for k in small_bact_dict['Bacteria'][key]['Points'].keys():
+                                newx = ((small_bact_dict['Bacteria'][key]['Points'][k]['Coord'][0] * ratio) - (res / 2)) + x0
+                                newy = ((small_bact_dict['Bacteria'][key]['Points'][k]['Coord'][1] * ratio) - (res / 2)) + y0
+                                bact_dict['Bacteria'][key]['Points'][k]['Coord'] = (newx, newy)
+                                
                             for k in bact_dict['Bacteria'][key]['Points'].keys():
                                 #x0, y0, dx, dy, x_res, y_res, angle, t_int, offset, distance, averaging, resolution, source, channel_names
-                                fourier_data = neaConnect.scan_fourier(bact_dict['Bacteria'][key]['Points'][k]['Coord'][0], bact_dict['Bacteria'][key]['Points'][k]['Coord'][1], 0, 0,
+                                fourier_data = self.neaConnect.scan_fourier(bact_dict['Bacteria'][key]['Points'][k]['Coord'][0], bact_dict['Bacteria'][key]['Points'][k]['Coord'][1], 0, 0,
                                                                         **self.hdf5_dict['Info']['Fourier'], channel_names = self.channel)
                                 for fk in fourier_data.keys():
                                     fourier_data[fk] = asNumpyArray(fourier_data[fk])
                                     bact_dict['Bacteria'][key]['Points'][k][fk] = fourier_data[fk]
-                            
-                self.hdf5_dict['Data'] = bact_dict
-            
-            else:
-                print('Z and/or R-Z is not in Channel, therefore can not proceed.')
+                        else:
+                            print('Bacteria could not be identified. Drift seems to be too strong')
+                        
+            self.hdf5_dict['Data'] = bact_dict
+        
+        else:
+            print('Z and/or R-Z is not in Channel, therefore can not proceed.')
 
-            self.hdf5_dict['Data']['AFM'] = afm_data
+        self.hdf5_dict['Data']['AFM'] = afm_data

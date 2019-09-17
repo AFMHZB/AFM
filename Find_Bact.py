@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+import copy
 
 class FindBacteria:
     
@@ -24,7 +25,7 @@ class FindBacteria:
         return
     
     def get_dict(self):
-        return self._dict
+        return copy.deepcopy(self._dict)
     
     def auto_canny(self, image, sigma=0.5):
         v = np.median(image)
@@ -32,6 +33,12 @@ class FindBacteria:
         upper = int(min(255, (1.0 + sigma) * v))
         edged = cv2.Canny(image, lower, upper)
         return edged
+    
+    def set_data(self, z_data, r_data):
+        self._z_data = z_data
+        self._r_data = r_data
+        self._shape = self._z_data.shape
+        self._ratio = ratio
     
     def plane_correction(self, raw):
         null_val = np.average(raw)

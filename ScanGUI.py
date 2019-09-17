@@ -12,15 +12,27 @@ import numbers
 import os
 import copy
 import configparser as cfg
+import threading
+import queue
 from Scan import *
 
 class StdoutRedirector(object):
-    def __init__(self,text_widget):
+    def __init__(self,text_widget, stream):
         self.text_space = text_widget
+        self.stream = stream
 
-    def write(self,string):
+    def write(self, string):
         self.text_space.insert('end', string)
         self.text_space.see('end')
+        self.stream.flush()
+        
+    def writelines(self, strings):
+        self.text_space.insert('end', strings)
+        self.text_space.see('end')
+        self.stream.flush()
+    
+    def __getattr__(self, attr):
+        return getattr(self.stream, attr)
 
 def read_config(cfg_path):
     keys = ['Info', 'AFM', 'Fourier', 'Channel', 'Characteristics', 'Measurement']
@@ -57,6 +69,9 @@ class start_scan(tk.Tk):
         
         self.window = tk.Tk()
         self.window.title("Setup automatic FTIR-Spectroscopy")#
+        self.message_queue = queue.Queue()
+        self.message_event = '<<message>>'
+        self.window.bind(self.message_event, self. process_message_queue)
         self.window['padx'] = 5
         self.window['pady'] = 5
         self.window.resizable(False, False)
@@ -231,7 +246,24 @@ class start_scan(tk.Tk):
         return self
     
     def __exit__(self, exc_type, exc_val, exc_tb):
+        try:
+            self.scan.__exit__(exc_type, exc_val, exc_tb)
+        except AttributeError:
+            pass
+        try:
+            self.loop_bool = False
+        except AttributeError:
+            pass
         return
+    
+    def process_message_queue(self, event):
+        while self.message_queue.empty() is False:
+            message = self.message_queue.get(block=False)
+            print(message)
+            
+    def send_message_to_ui(self, message):
+        self.message_queue.put(message)
+        self.window.event_generate(self.message_event, when='tail')
     
     def csv_change(self):
         if self.csv_value.get() == 1:
@@ -415,12 +447,40 @@ class start_scan(tk.Tk):
         self.state = False
         self.window.attributes("-fullscreen", False)
         return "break"
+            
+    def pause_meas(self):
+        if self.meas_paused:
+            print('Resuming...')
+            self.window_pause_txt.set('Pause')
+            self.meas_paused = False
+            self.scan.pause()
+        else:
+            print('Pausing...')
+            self.window_pause_txt.set('Resume')
+            self.meas_paused = True
     
     def start(self):
+        self.start_button.config(state='disabled')
         self.scan_window = tk.Toplevel(self.window)
+        self.window_text = tk.Text(self.scan_window, wrap='word', height = 11, width=50)
+        self.window_text.grid(column=0, row=0, columnspan = 2, sticky='NSWE', padx=5, pady=5)
+        self.meas_paused = False
+        self.window_pause_txt = tk.StringVar()
+        self.window_pause = tk.Button(self.scan_window, textvariable=self.window_pause_txt, command=self.pause_meas)
+        self.window_pause_txt.set('Pause')
+        self.window_pause.grid(column=0, row=1, sticky='NSWE', padx=5, pady=5)
+        #sys.stdout = StdoutRedirector(self.window_text, sys.stdout)
         self.update_dict()
-        #with Scan(copy.deepcopy(self.scan_dict)) as scan:
-            #scan.start_scan(self.entries['Csv_path'].get())
+        self.scan = Scan(copy.deepcopy(self.scan_dict))
+        #self.scan_thread = threading.Thread(target=self.scan.start_scan, args=(self.entries['Csv_path'].get()))
+        self.scan_thread = threading.Thread(target=self.r_loop)
+        self.scan_thread.start()
+    
+    def r_loop(self):
+        self.loop_bool = True
+        while self.loop_bool:
+            print('Hello')
+            time.sleep(2)
 
 with start_scan() as scan:
     scan.window.mainloop()
