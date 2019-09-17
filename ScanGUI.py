@@ -472,15 +472,8 @@ class start_scan(tk.Tk):
         #sys.stdout = StdoutRedirector(self.window_text, sys.stdout)
         self.update_dict()
         self.scan = Scan(copy.deepcopy(self.scan_dict))
-        #self.scan_thread = threading.Thread(target=self.scan.start_scan, args=(self.entries['Csv_path'].get()))
-        self.scan_thread = threading.Thread(target=self.r_loop)
+        self.scan_thread = threading.Thread(target=self.scan.start_scan, args=(self.entries['Csv_path'].get()))
         self.scan_thread.start()
-    
-    def r_loop(self):
-        self.loop_bool = True
-        while self.loop_bool:
-            print('Hello')
-            time.sleep(2)
 
 with start_scan() as scan:
     scan.window.mainloop()
