@@ -13,7 +13,7 @@ Assuming you have two twodimensional Data Arrays representing two Measurement Di
 
 First both Arrays are leveld using linear regression. The function looks like this:
 
-<figure><img src="https://raw.githubusercontent.com/AFMHZB/AFM/AFMHZB-pictures/Pre_Fix.png" alt="Alt Text" width="33%"><figcaption>Scan from Left to Right</figcaption></figure> <img src="https://raw.githubusercontent.com/AFMHZB/AFM/AFMHZB-pictures/Plane.png" alt="Alt Text" width="33%"> <img src="https://raw.githubusercontent.com/AFMHZB/AFM/AFMHZB-pictures/Post_Fix.png" alt="Alt Text" width="33%">
+<img src="https://raw.githubusercontent.com/AFMHZB/AFM/AFMHZB-pictures/Pre_Fix.png" alt="Alt Text" width="33%"> <img src="https://raw.githubusercontent.com/AFMHZB/AFM/AFMHZB-pictures/Plane.png" alt="Alt Text" width="33%"> <img src="https://raw.githubusercontent.com/AFMHZB/AFM/AFMHZB-pictures/Post_Fix.png" alt="Alt Text" width="33%">
 
 ```sh
 def plane_correction(raw):
@@ -31,11 +31,21 @@ def plane_correction(raw):
 
 <img src="https://raw.githubusercontent.com/AFMHZB/AFM/AFMHZB-pictures/forward.png" alt="Forward Scan" width="33%"> <img src="https://raw.githubusercontent.com/AFMHZB/AFM/AFMHZB-pictures/backward.png" alt="Backward Scan" width="33%"> <img src="https://raw.githubusercontent.com/AFMHZB/AFM/AFMHZB-pictures/fix.png" alt="Direction Fix" width="33%">
 
-As you can see in the Pictures it is possible for the Data to have "Tails". To Correct them both Matrices are Stacked to 1D Arrays and then combined to one single Array using the smaller value of the two. 
+As you can see in the first two pictures it is possible for the data to have "Tails". To Correct them both Matrices are Stacked to 1D Arrays and then combined to one single Array using the smaller value of the two. The result is seen in the third image.
 ```sh
 #z_data is left to right tip direction, r_data is right to left
 comb_data = np.array([np.ndarray.flatten(z_data), np.ndarray.flatten(r_data)])
 #self._shape saves the shape of the input Array
 data = np.reshape(np.nanmin(comb_data, axis=0), self._shape)
 ```
+After that possible stripes in the data are removed.
+<img src="https://raw.githubusercontent.com/AFMHZB/AFM/AFMHZB-pictures/stripes.png" alt="Stripes in Scan" width="33%"> <img src="https://raw.githubusercontent.com/AFMHZB/AFM/AFMHZB-pictures/stripe_cor.png" alt="Stripes Corrected" width="33%">
 
+```sh
+ for x in range(len(data)):
+    data[x] = data[x] - np.median(data[x] - data[x-1])
+    data = data - np.nanmin(data)
+ ```
+ What this does is iterate over the lines of the data array and set the median of the difference vector between each line and the line before it to 0. The following image explains it further:
+ 
+ <img src="https://raw.githubusercontent.com/AFMHZB/AFM/AFMHZB-pictures/Stripe_Corr_Diagramm.png" alt="Forward Scan" width="48%"> <img src="https://raw.githubusercontent.com/AFMHZB/AFM/AFMHZB-pictures/Stripe_Corr_Diagramm2.png" alt="Forward Scan" width="48%"> 
