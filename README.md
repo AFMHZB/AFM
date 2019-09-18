@@ -39,6 +39,7 @@ comb_data = np.array([np.ndarray.flatten(z_data), np.ndarray.flatten(r_data)])
 data = np.reshape(np.nanmin(comb_data, axis=0), self._shape)
 ```
 After that possible stripes in the data are removed.
+
 <img src="https://raw.githubusercontent.com/AFMHZB/AFM/AFMHZB-pictures/stripes.png" alt="Stripes in Scan" width="33%"> <img src="https://raw.githubusercontent.com/AFMHZB/AFM/AFMHZB-pictures/stripe_cor.png" alt="Stripes Corrected" width="33%">
 
 ```sh
@@ -49,3 +50,7 @@ After that possible stripes in the data are removed.
  What this does is iterate over the lines of the data array and set the median of the difference vector between each line and the line before it to 0. The following image explains it further:
  
  <img src="https://raw.githubusercontent.com/AFMHZB/AFM/AFMHZB-pictures/Stripe_Corr_Diagramm.png" alt="Forward Scan" width="48%"> <img src="https://raw.githubusercontent.com/AFMHZB/AFM/AFMHZB-pictures/Stripe_Corr_Diagramm2.png" alt="Forward Scan" width="48%"> 
+
+Next up the value range of the data is decreased by cutting off the top values. The next image shows an example of a histogram. The marked area shows the range in which the bacteria can be found. As you can see the values spread out a lot, so to increase the contrast between bacteria and background the values are cut off. The second and third image show a comparison for the bacteria image.
+
+<img src="https://raw.githubusercontent.com/AFMHZB/AFM/AFMHZB-pictures/Histogram.png" alt="Forward Scan" width="50%"> <img src="https://raw.githubusercontent.com/AFMHZB/AFM/AFMHZB-pictures/stripe_cor.png" alt="Forward Scan" width="24%"> <img src="https://raw.githubusercontent.com/AFMHZB/AFM/AFMHZB-pictures/hist_cor.png" alt="Forward Scan" width="24%">
