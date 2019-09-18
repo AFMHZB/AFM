@@ -28,6 +28,7 @@ def plane_correction(raw):
     plane = np.reshape(np.dot(X, theta), m)
     return (raw - plane)
 ```
+After that the two directions are combined to 1 final data array.
 
 <img src="https://raw.githubusercontent.com/AFMHZB/AFM/AFMHZB-pictures/forward.png" alt="Forward Scan" width="33%"> <img src="https://raw.githubusercontent.com/AFMHZB/AFM/AFMHZB-pictures/backward.png" alt="Backward Scan" width="33%"> <img src="https://raw.githubusercontent.com/AFMHZB/AFM/AFMHZB-pictures/fix.png" alt="Direction Fix" width="33%">
 
