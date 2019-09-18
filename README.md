@@ -58,4 +58,4 @@ Next up the value range of the data is decreased by cutting off the top values. 
 ```sh
 #limit is the value indicating where to cut off the data
 data[np.where(data > limit)] = limit
-´´´
+```
