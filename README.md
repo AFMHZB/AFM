@@ -13,7 +13,7 @@ Assuming you have two twodimensional Data Arrays representing two Measurement Di
 
 First both Arrays are leveld using linear regression. The function looks like this:
 
-<img src="https://raw.githubusercontent.com/AFMHZB/AFM/AFMHZB-pictures/Pre_Fix.png" alt="Alt Text" width="33%"> <img src="https://raw.githubusercontent.com/AFMHZB/AFM/AFMHZB-pictures/Plane.png" alt="Alt Text" width="33%"> <img src="https://raw.githubusercontent.com/AFMHZB/AFM/AFMHZB-pictures/Post_Fix.png" alt="Alt Text" width="33%">
+<figure><img src="https://raw.githubusercontent.com/AFMHZB/AFM/AFMHZB-pictures/Pre_Fix.png" alt="Alt Text" width="33%"><figcaption>Scan from Left to Right</figcaption></figure> <img src="https://raw.githubusercontent.com/AFMHZB/AFM/AFMHZB-pictures/Plane.png" alt="Alt Text" width="33%"> <img src="https://raw.githubusercontent.com/AFMHZB/AFM/AFMHZB-pictures/Post_Fix.png" alt="Alt Text" width="33%">
 
 ```sh
 def plane_correction(raw):
