@@ -29,7 +29,7 @@ def plane_correction(raw):
     return (raw - plane)
 ```
 
-<img src="https://raw.githubusercontent.com/AFMHZB/AFM/AFMHZB-pictures/forward.png" alt="Alt Text" width="40%"> <img src="https://raw.githubusercontent.com/AFMHZB/AFM/AFMHZB-pictures/backward.png" alt="Alt Text" width="40%">
+<img src="https://raw.githubusercontent.com/AFMHZB/AFM/AFMHZB-pictures/forward.png" alt="Alt Text" width="30%"> <img src="https://raw.githubusercontent.com/AFMHZB/AFM/AFMHZB-pictures/backward.png" alt="Alt Text" width="30%">
 
 As you can see in the Pictures it is possible for the Data to have "Tails". To Correct them both Matrices are Stacked to 1D Arrays and then combined to one single Array using the smaller value of the two. 
 ```sh
@@ -38,3 +38,5 @@ comb_data = np.array([np.ndarray.flatten(z_data), np.ndarray.flatten(r_data)])
 #self._shape saves the shape of the input Array
 data = np.reshape(np.nanmin(comb_data, axis=0), self._shape)
 ```
+For Comparison left image shows the forward directed Data and the right image shows the result of the shown code
+<img src="https://raw.githubusercontent.com/AFMHZB/AFM/AFMHZB-pictures/forward.png" alt="Alt Text" width="30%"> <img src="https://raw.githubusercontent.com/AFMHZB/AFM/AFMHZB-pictures/fix.png" alt="Alt Text" width="30%">
