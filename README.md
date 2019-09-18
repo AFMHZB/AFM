@@ -46,7 +46,6 @@ After that possible stripes in the data are removed.
 ```sh
  for x in range(len(data)):
     data[x] = data[x] - np.median(data[x] - data[x-1])
-    data = data - np.nanmin(data)
  ```
  What this does is iterate over the lines of the data array and set the median of the difference vector between each line and the line before it to 0. The following image explains it further:
  
