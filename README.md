@@ -54,3 +54,8 @@ After that possible stripes in the data are removed.
 Next up the value range of the data is decreased by cutting off the top values. The next image shows an example of a histogram. The marked area shows the range in which the bacteria can be found. As you can see the values spread out a lot, so to increase the contrast between bacteria and background the values are cut off. The second and third image show a comparison for the bacteria image.
 
 <img src="https://raw.githubusercontent.com/AFMHZB/AFM/AFMHZB-pictures/Histogram.png" alt="Forward Scan" width="50%"> <img src="https://raw.githubusercontent.com/AFMHZB/AFM/AFMHZB-pictures/stripe_cor.png" alt="Forward Scan" width="24%"> <img src="https://raw.githubusercontent.com/AFMHZB/AFM/AFMHZB-pictures/hist_cor.png" alt="Forward Scan" width="24%">
+
+```sh
+#limit is the value indicating where to cut off the data
+data[np.where(data > limit)] = limit
+´´´
