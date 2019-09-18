@@ -11,11 +11,10 @@ It is based on the [OpenCV](https://opencv.org/) Library and uses [Canny Edge De
 
 Assuming you have two twodimensional Data Arrays representing two Measurement Directions that differ by 180° the Algorithms works like this (Code is in Python 3.6): 
 
-https://raw.githubusercontent.com/AFMHZB/AFM/AFMHZB-pictures/Pre_Fix.png
-
-<img src="https://raw.githubusercontent.com/AFMHZB/AFM/AFMHZB-pictures/Pre_Fix.png" alt="Alt Text" width="40%">
-
 First both Arrays are leveld using linear regression. The function looks like this:
+
+<img src="https://raw.githubusercontent.com/AFMHZB/AFM/AFMHZB-pictures/Pre_Fix.png" alt="Alt Text" width="40%"> <img src="https://raw.githubusercontent.com/AFMHZB/AFM/AFMHZB-pictures/Plane.png" alt="Alt Text" width="40%"> <img src="https://raw.githubusercontent.com/AFMHZB/AFM/AFMHZB-pictures/Post_Fix.png" alt="Alt Text" width="40%">
+
 ```sh
 def plane_correction(raw):
     null_val = np.average(raw)
