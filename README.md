@@ -59,3 +59,6 @@ Next up the value range of the data is decreased by cutting off the top values. 
 #limit is the value indicating where to cut off the data
 data[np.where(data > limit)] = limit
 ```
+The next steps are pretty common for edge detection. The data is normalized (left image) to greyscale values from 0 to 1 and a noise filter is applied (right image). The noise filter of choice is the [bilateral filter](http://docs.opencv.org/modules/imgproc/doc/filtering.html?highlight=bilateralfilter#bilateralfilter)
+
+<img src="https://raw.githubusercontent.com/AFMHZB/AFM/AFMHZB-pictures/Raw.png" alt="Normalized Data" width="48%"> <img src="https://raw.githubusercontent.com/AFMHZB/AFM/AFMHZB-pictures/Bilateral.png" alt="bilateral Filter" width="48%">
