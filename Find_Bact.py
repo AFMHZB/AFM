@@ -38,7 +38,6 @@ class FindBacteria:
         self._z_data = z_data
         self._r_data = r_data
         self._shape = self._z_data.shape
-        self._ratio = ratio
     
     def plane_correction(self, raw):
         null_val = np.average(raw)

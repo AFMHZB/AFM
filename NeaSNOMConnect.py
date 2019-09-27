@@ -48,13 +48,26 @@ class NeaSNOMConnect:
     
     def pause(self):
         if self._scan:
-            if not self._scan.isSuspended():
+            if not self._scan.IsSuspended:
                 self._scan.Suspend()
+                print('Suspend')
+        else:
+            print('Test')
     
     def resume(self):
         if self._scan:
-            if self._scan.isSuspended():
+            if self._scan.IsSuspended:
                 self._scan.Resume()
+                
+    def get_progress(self):
+        return self._scan.Progress
+    
+    def is_completed(self):
+        print('Inside: ', self._scan.IsCompleted)
+        return self._scan.IsCompleted
+    
+    def is_started(self):
+        return self._scan.IsStarted
 
     def client_version(self):
         return self.neaMic.ClientVersion
@@ -94,17 +107,14 @@ class NeaSNOMConnect:
             self._scan.set_ScanAngle(angle)
             self._scan.set_SamplingTime(t_int)
             #insert warning if too fast maybe
-            self.print_parameter(_scan)
+            self.print_parameter(self._scan)
             _image = self._scan.Start()
             _channel = {}
             for c in channel_names:
                 _channel[c] = _image.GetChannel(c)
             print('Scanning..')
-            while not _scan.IsCompleted:
+            while not self._scan.IsCompleted:
                 time.sleep(0.1)
-                prog = int(_scan.Progress * 30)
-                print('[' + '#' * (prog) + '-' * (30 - prog) + ']', end='\r')
-            print('[' + '#' * 30 + ']')
             print('Done!')
             _data = {}
             for c in _channel.keys():
@@ -121,30 +131,27 @@ class NeaSNOMConnect:
         if self._connected:
             if not self.in_contact():
                 self.neaMic.AutoApproach(0.8)
-            _scan = self.neaMic.PrepareFourierScan()
-            _scan.set_CenterX(x0)
-            _scan.set_CenterY(y0)
-            _scan.set_ScanAreaWidth(dx)
-            _scan.set_ScanAreaHeight(dy)
-            _scan.set_ResolutionColumns(x_res)
-            _scan.set_ResolutionRows(y_res)
-            _scan.set_ScanAngle(angle)
-            _scan.set_SamplingTime(t_int)
-            _scan.set_InterferometerOffset(offset)
-            _scan.set_InterferometerDistance(distance)
-            _scan.set_Averaging(averaging)
-            _scan.set_InterferogramResolution(resolution)
-            self.print_parameter(_scan)
-            _image = _scan.Start()
+            self._scan = self.neaMic.PrepareFourierScan()
+            self._scan.set_CenterX(x0)
+            self._scan.set_CenterY(y0)
+            self._scan.set_ScanAreaWidth(dx)
+            self._scan.set_ScanAreaHeight(dy)
+            self._scan.set_ResolutionColumns(x_res)
+            self._scan.set_ResolutionRows(y_res)
+            self._scan.set_ScanAngle(angle)
+            self._scan.set_SamplingTime(t_int)
+            self._scan.set_InterferometerOffset(offset)
+            self._scan.set_InterferometerDistance(distance)
+            self._scan.set_Averaging(averaging)
+            self._scan.set_InterferogramResolution(resolution)
+            self.print_parameter(self._scan)
+            _image = self._scan.Start()
             _channel = {}
             for c in channel_names:
                 _channel[c] = _image.GetChannel(c)
             print('Scanning..')
-            while not _scan.IsCompleted:
+            while not self._scan.IsCompleted:
                 time.sleep(0.1)
-                prog = int(_scan.Progress * 30)
-                print('[' + '#' * (prog) + '-' * (30 - prog) + ']', end='\r')
-            print('[' + '#' * 30 + ']')
             print('Done!')
             _data = {}
             for c in _channel.keys():

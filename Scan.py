@@ -102,6 +102,30 @@ class Scan:
             self.neaConnect.pause()
         except AttributeError:
             print('No Measurement running.')
+    
+    def resume(self):
+        try:
+            self.neaConnect.resume()
+        except AttributeError:
+            print('No Measurement running.')
+    
+    def is_completed(self):
+        try:
+            return self.neaConnect.is_completed()
+        except AttributeError:
+            return True
+
+    def is_started(self):
+        try:
+            return self.neaConnect.is_started()
+        except AttributeError:
+            return False
+    
+    def get_progress(self):
+        try:
+            return self.neaConnect.get_progress()
+        except AttributeError:
+            return 0
                     
     def start_scan(self, csv_path=''):
         now = datetime.now().strftime('%Y-%m-%d %H%M')

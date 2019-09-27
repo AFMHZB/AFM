@@ -62,10 +62,10 @@ def read_config(cfg_path):
 
 class start_scan(tk.Tk):
     def __init__(self):
-        self.scan = os.path.join(os.getcwd(), 'scan.ini')
-        if not os.path.exists(self.scan):
+        self.scan_path = os.path.join(os.getcwd(), 'scan.ini')
+        if not os.path.exists(self.scan_path):
             self.make_ini()
-        self.scan_dict = read_config(self.scan)
+        self.scan_dict = read_config(self.scan_path)
         
         self.window = tk.Tk()
         self.window.title("Setup automatic FTIR-Spectroscopy")#
@@ -251,7 +251,7 @@ class start_scan(tk.Tk):
         except AttributeError:
             pass
         try:
-            self.loop_bool = False
+            self.loop_var = False
         except AttributeError:
             pass
         return
@@ -334,16 +334,22 @@ class start_scan(tk.Tk):
             
             self.scan_dict = read_config(f)
             new_dict = None
+    
+    def dict_set(self, section, key, val):
+        try:
+            self.scan_dict[section][key] = float(val)
+        except ValueError:
+            self.scan_dict[section][key] = val
                 
     def update_dict(self):
         for key in self.scan_dict['Info'].keys():
-            self.scan_dict['Info'][key] = self.entries[key.capitalize()].get()
+            self.dict_set('Info', key, self.entries[key.capitalize()].get())
 
         for key in self.scan_dict['AFM'].keys():
-            self.scan_dict['AFM'][key] = self.entries[key.capitalize()].get()
-
+            self.dict_set('AFM', key, self.entries[key.capitalize()].get())
+            
         for key in self.scan_dict['Fourier'].keys():
-            self.scan_dict['Fourier'][key] = self.entries[key.capitalize()].get()
+            self.dict_set('Fourier', key, self.entries[key.capitalize()].get())
 
         for key in self.scan_dict['Channel'].keys():
             self.scan_dict['Channel'][key] = self.check_var[key.upper()].get()
@@ -352,13 +358,12 @@ class start_scan(tk.Tk):
             if isinstance(self.scan_dict['Characteristics'][key], list):
                 low = key[0].capitalize() + '_Low'
                 high = key[0].capitalize() + '_High'
-                self.scan_dict['Characteristics'][key] = [self.entries[low].get(), self.entries[high].get()]
-                print(low, high)
+                self.scan_dict['Characteristics'][key] = [float(self.entries[low].get()), float(self.entries[high].get())]
             else:
-                self.scan_dict['Characteristics'][key] = self.entries[key.capitalize()].get()
+                self.dict_set('Characteristics', key, self.entries[key.capitalize()].get())
         
         for key in self.scan_dict['Measurement'].keys():
-            self.scan_dict['Measurement'][key] = self.entries[key.capitalize()].get()
+            self.dict_set('Measurement', key, self.entries[key.capitalize()].get())
     
     def fill_form(self):
         for key in self.scan_dict['Info'].keys():
@@ -419,13 +424,13 @@ class start_scan(tk.Tk):
         config['Characteristics'] = {'Length': '1.8; 5', 'Width': '0.5; 1.3',
                                      'Height': '0.4; 0.65', 'Corona': 0.5, 'CLimit': 0.2}
         config['Measurement'] = {'Iterations': 1, 'dest_path': os.getcwd(), 'csv_path': ''}
-        with open(self.scan, 'w') as file:
+        with open(self.scan_path, 'w') as file:
             config.write(file)
             
     def browse_destination(self):
         dirname = filedialog.askdirectory(initialdir=os.getcwd(),title='Please select a destination for the HDF5 Files')
         if not dirname:
-            return
+            returnself.scan_dict['AFM']['px']
         else:
             self.entries['Dest_path'].delete(0, tk.END)
             self.entries['Dest_path'].insert(0, dirname)
@@ -453,14 +458,31 @@ class start_scan(tk.Tk):
             print('Resuming...')
             self.window_pause_txt.set('Pause')
             self.meas_paused = False
-            self.scan.pause()
+            self.scan.resume()
         else:
             print('Pausing...')
             self.window_pause_txt.set('Resume')
             self.meas_paused = True
+            self.scan.pause()
+            
+    def random_loop(self, count):
+        self.loop_var = True
+        while self.loop_var:
+            print('Loop ', count, ': Random Action...')
+            time.sleep(2)
+    
+    def close_scan_window(self):
+        self.loop_var = False
+        self.start_button.config(state='normal')
+        self.scan_aborted = True
+        self.scan_completed = True
+        self.scan_window.destroy()
+        sys.stdout = sys.__stdout__
     
     def start(self):
+        print(self.scan_dict['AFM']['px'], type(self.scan_dict['AFM']['px']))
         self.start_button.config(state='disabled')
+        repeats = int(float(self.entries['Iterations'].get()))
         self.scan_window = tk.Toplevel(self.window)
         self.window_text = tk.Text(self.scan_window, wrap='word', height = 11, width=50)
         self.window_text.grid(column=0, row=0, columnspan = 2, sticky='NSWE', padx=5, pady=5)
@@ -469,11 +491,36 @@ class start_scan(tk.Tk):
         self.window_pause = tk.Button(self.scan_window, textvariable=self.window_pause_txt, command=self.pause_meas)
         self.window_pause_txt.set('Pause')
         self.window_pause.grid(column=0, row=1, sticky='NSWE', padx=5, pady=5)
-        #sys.stdout = StdoutRedirector(self.window_text, sys.stdout)
+        self.progress = tk.DoubleVar()
+        self.progress.set(0)
+        self.window_progress = ttk.Progressbar(self.scan_window, orient="horizontal", length=300, mode="determinate", variable=self.progress, maximum=1)
+        self.window_progress.grid(column=0, row=2, columnspan = 2, sticky='NSWE')
+        sys.stdout = StdoutRedirector(self.window_text, sys.stdout)
+        self.scan_window.protocol("WM_DELETE_WINDOW", self.close_scan_window)
         self.update_dict()
+        print('Iterations: ', repeats)
         self.scan = Scan(copy.deepcopy(self.scan_dict))
-        self.scan_thread = threading.Thread(target=self.scan.start_scan, args=(self.entries['Csv_path'].get()))
+        self.scan_thread = threading.Thread(target=self.start_scan, args=(self.entries['Csv_path'].get(), repeats))
+        self.progress_thread = threading.Thread(target=self.prog_thread)
+        #self.scan_thread = threading.Thread(target=self.random_loop, args=(x))
+        self.scan_aborted = False
+        self.scan_completed = False
         self.scan_thread.start()
+        self.progress_thread.start()
+    
+    def start_scan(self, path, count):
+        x = 0
+        while not self.scan_aborted and x < count:
+            self.scan.start_scan(path)
+            x += 1
+        self.scan_completed = True
+    
+    def prog_thread(self):
+        while not self.scan_completed:
+            print(self.progress.get())
+            self.progress.set(self.scan.get_progress())
+            time.sleep(0.5)
+        
 
 with start_scan() as scan:
     scan.window.mainloop()
