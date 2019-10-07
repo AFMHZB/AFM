@@ -2,8 +2,10 @@
 
 [![N|Solid](https://cldup.com/dTxpPi9lDf.thumb.png)](https://nodesource.com/products/nsolid)
 
-[![Build Status](https://travis-ci.org/joemccann/dillinger.svg?branch=master)](https://travis-ci.org/joemccann/dillinger)
+# Disclaimer
+This Software tries to communicate directly with the neaSNOM Microscope using SDKs provided by neaspec GmbH. Without them this Software will not work. Also the developer takes no responsibility for any damage caused while using this program, so use with caution and at own risk.
 
+# General
 This project is build to work with a neaSNOM Microscope ([neaspec GmbH](https://www.neaspec.com/), Germany), but should be easily expandable to work with other Device for [Atomic Force Microscopy (AFM)](https://en.wikipedia.org/wiki/Atomic_force_microscopy) as well. At the moment the Software uses the SDKs provided by neaspec to control the Microscope.
 It is based on the [OpenCV](https://opencv.org/) Library and uses [Canny Edge Detection](https://en.wikipedia.org/wiki/Canny_edge_detector) as well as OpenCVs [findContours()](https://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_imgproc/py_contours/py_table_of_contents_contours/py_table_of_contents_contours.html) Function.
 
