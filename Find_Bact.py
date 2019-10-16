@@ -4,11 +4,8 @@ import copy
 
 class FindBacteria:
     
-    def __init__(self, z_data, r_data, bac_params, ratio):
+    def __init__(self, bac_params, ratio):
         self._dict = {}
-        self._z_data = z_data
-        self._r_data = r_data
-        self._shape = self._z_data.shape
         #Parameter to define a bacteria, usually as tuple of (min, max)
         self._length = bac_params['length']#tuple
         self._width = bac_params['width']#tuple
@@ -34,11 +31,6 @@ class FindBacteria:
         edged = cv2.Canny(image, lower, upper)
         return edged
     
-    def set_data(self, z_data, r_data):
-        self._z_data = z_data
-        self._r_data = r_data
-        self._shape = self._z_data.shape
-    
     def plane_correction(self, raw):
         null_val = np.average(raw)
         raw[np.isnan(raw)] = null_val
@@ -51,18 +43,29 @@ class FindBacteria:
         plane = np.reshape(np.dot(X, theta), m)
         return (raw - plane)
     
-    def data_correction(self, limit):
-        z_data = self.plane_correction(self._z_data)
-        r_data = self.plane_correction(self._r_data)
-        comb_data = np.array([np.ndarray.flatten(z_data), np.ndarray.flatten(r_data)])
-        data = np.reshape(np.nanmin(comb_data, axis=0), self._shape)
-        data = self.plane_correction(data)
+    def tail_correction(self, forward, backward):
+        shape = forward.shape
+        comb_data = np.array([np.ndarray.flatten(forward), np.ndarray.flatten(backward)])
+        return np.reshape(np.nanmin(comb_data, axis=0), shape)
+    
+    def stripe_correction(self, data):
         for x in range(len(data)):
             data[x] = data[x] - np.median(data[x] - data[x-1])
+        return data
+            
+    def range_correction(self, data, limit):
         data = data - np.nanmin(data)
-        top = np.nanmax(data)
         data[np.where(data > limit)] = limit
-        return data, top
+        return data
+    
+    def full_correction(self, forward, backward, limit):
+        z_data = self.stripe_correction(forward)
+        r_data = self.stripe_correction(backward)
+        data = self.tail_correction(z_data, r_data)
+        data = self.plane_correction(data)
+        data = self.range_correction(data, limit)
+        return data
+        
     
     def find_bacteria(self, data, top):
         norm = cv2.normalize(data,None,0,255,cv2.NORM_MINMAX , cv2.CV_8U)
@@ -82,7 +85,7 @@ class FindBacteria:
             width = min(size) * self._ratio
             length = max(size) * self._ratio
             if self._width[0] <= width <= self._width[1] and self._length[0] <= length <= self._length[1]:
-                mask = np.zeros(self._shape, np.uint8)
+                mask = np.zeros(data.shape, np.uint8)
                 cv2.drawContours(mask, [c], 0, 1, -1)
                 h_upper = np.nanmax(data[np.where(mask==1)])
                 if self._height[0] * 10**(-6) <= h_upper <= self._height[1] * 10**(-6):
@@ -120,12 +123,12 @@ class FindBacteria:
                 self._dict['Bacteria'][bact_name]['Points']['Bot']['Coord'] = (bot_x, bot_y)
                 
                 new_res = 2.5 * radius
-                new_res = new_res if new_res < self._shape[0] / 2 else self._shape[0] / 2
+                new_res = new_res if new_res < data.shape[0] / 2 else data.shape[0] / 2
                 box_x = cx - new_res
                 box_y = cy - new_res
                 
-                width = int(2 * new_res) if box_x + (2 * new_res) <= self._shape[0] else int(self._shape[0] - abs(box_x))
-                height = int(2 * new_res) if box_y + (2 * new_res) <= self._shape[1] else int(self._shape[1] - abs(box_y))
+                width = int(2 * new_res) if box_x + (2 * new_res) <= data.shape[0] else int(data.shape[0] - abs(box_x))
+                height = int(2 * new_res) if box_y + (2 * new_res) <= data.shape[1] else int(data.shape[1] - abs(box_y))
                 #must be done last, or the rect will just be moved
                 box_x = int(box_x) if box_x > 0 else 0
                 box_y = int(box_y) if box_y > 0 else 0
@@ -151,7 +154,7 @@ class FindBacteria:
                     for key in self._dict['Bacteria'][bact_name]['Points'].keys():
                         cv2.circle(data_sqr_img, self._dict['Bacteria'][bact_name]['Points'][key]['Coord'], 3, 255, -1)
                     #cv2.circle(data_sqr_img, references[0], 3, 255, -1)
-                    self._dict['Bacteria'][bact_name]['dxy'] = new_res * self._ratio
+                    self._dict['Bacteria'][bact_name]['dxy'] = new_res * 2 * self._ratio
                     self._dict['Bacteria'][bact_name]['pxy'] = new_res * 2
                     self._dict['Bacteria'][bact_name]['Meassurement_Points_IMG'] = data_sqr_img
         else:
