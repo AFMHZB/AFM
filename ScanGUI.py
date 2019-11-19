@@ -89,10 +89,18 @@ class start_scan(tk.Tk):
         self.filemenu.add_separator()
         self.filemenu.add_command(label="Exit", command=self.window.destroy)
         
+        self.tab_parent = ttk.Notebook(self.window)
+        self.complete_tab = ttk.Frame(self.tab_parent)
+        self.compressed_tab = ttk.Frame(self.tab_parent)
+        
+        self.tab_parent.add(self.complete_tab, text='Complete Scan')
+        self.tab_parent.add(self.compressed_tab, text='Compressed Sensing')
+        self.tab_parent.pack(expand=1, fill='both') 
+        
         style = ttk.Style()
         style.configure('TLabelframe', background='White')   
         style.configure('TLabelframe.Label', background='White')
-        self.form_frame = ttk.LabelFrame(self.window, text="Measurement Setup", relief=tk.RIDGE)
+        self.form_frame = ttk.LabelFrame(self.complete_tab, text="Measurement Setup", relief=tk.RIDGE)
         self.form_frame.pack(side=tk.TOP, fill=tk.BOTH, expand = tk.NO)
         
         self.entries = {}
@@ -153,10 +161,13 @@ class start_scan(tk.Tk):
         self.make_entry(self.fourier_frame, 2, 1, 'Averaging')
         self.make_entry(self.fourier_frame, 2, 3, 'Resolution')
         
+        self.make_entry(self.fourier_frame, 3, 1, 'Angle_f')
+        self.make_entry(self.fourier_frame, 3, 3, 'T_int_f')
+        
         self.labels['Source'] = tk.Label(self.fourier_frame, text='Source')
-        self.labels['Source'].grid(row=2, column=1, sticky=tk.N + tk.S + tk.E + tk.W)
+        self.labels['Source'].grid(row=4, column=1, sticky=tk.N + tk.S + tk.E + tk.W)
         self.entries['Source'] = tk.Entry(self.fourier_frame)
-        self.entries['Source'].grid(row=2, column=2, columnspan = 3, sticky=tk.N + tk.S + tk.E + tk.W)
+        self.entries['Source'].grid(row=4, column=2, columnspan = 3, sticky=tk.N + tk.S + tk.E + tk.W)
         
         #Channel Fields
         self.channel_frame = ttk.LabelFrame(self.form_frame, text="Channel", relief=tk.RIDGE)
@@ -248,7 +259,7 @@ class start_scan(tk.Tk):
     def __exit__(self, exc_type, exc_val, exc_tb):
         try:
             self.scan.__exit__(exc_type, exc_val, exc_tb)
-        except AttributeError:
+        except (AttributeError, RecursionError):
             pass
         try:
             self.loop_var = False
@@ -259,7 +270,14 @@ class start_scan(tk.Tk):
     def process_message_queue(self, event):
         while self.message_queue.empty() is False:
             message = self.message_queue.get(block=False)
-            print(message)
+            if message == 'quit_scan':
+                sys.stdout = sys.__stdout__
+                self.start_button.config(state='normal')
+                try:
+                    self.scan.__exit__('abort', None, None)
+                except AttributeError:
+                    pass
+                self.scan_window.destroy()
             
     def send_message_to_ui(self, message):
         self.message_queue.put(message)
@@ -376,10 +394,7 @@ class start_scan(tk.Tk):
             self.set_text(key.capitalize(), self.scan_dict['AFM'][key])
             
         for key in self.scan_dict['Fourier'].keys():
-            if key == 'angle' or key == 't_int':
-                self.set_text(key.capitalize(), self.scan_dict['AFM'][key])
-            else:
-                self.set_text(key.capitalize(), self.scan_dict['Fourier'][key])
+            self.set_text(key.capitalize(), self.scan_dict['Fourier'][key])
         
         for key in self.scan_dict['Channel'].keys():
             if self.scan_dict['Channel'][key] == 0:
@@ -409,8 +424,8 @@ class start_scan(tk.Tk):
                           'operators': 'Operators'}
         config['AFM'] = {'x0': 50, 'y0': 50, 'dx': 15, 'dy': 15, 'px': 151,
                          'py': 151, 'angle': 0, 't_int': 11.9, 'setpoint': 0.8,
-                         'hlimit': 0.65}
-        config['Fourier'] = {'x_res': 1, 'y_res': 1, 'angle': 0, 't_int': 11.9,
+                         'hlimit': 0.6}
+        config['Fourier'] = {'x_res': 1, 'y_res': 1, 'angle_f': 0, 't_int_f': 11.9,
                              'offset': 730, 'distance': 100, 'averaging': 5,
                              'resolution': 512, 'source': 'Synchrotron'}
         config['Channel'] = {'Z': 1, 'M': 1, 'M0A': 1, 'M0P': 1, 'O0A': 1, 'O0P': 1,
@@ -422,7 +437,7 @@ class start_scan(tk.Tk):
                              'R-M3A': 1, 'R-M3P': 1, 'R-O3A': 1, 'R-O3P': 1, 'R-M4A': 1, 'R-M4P': 1,
                              'R-O4A': 1, 'R-O4P': 1, 'R-M5A': 1, 'R-M5P': 1, 'R-O5A': 1, 'R-O5P': 1}
         config['Characteristics'] = {'Length': '1.8; 5', 'Width': '0.5; 1.3',
-                                     'Height': '0.4; 0.65', 'Corona': 0.5, 'CLimit': 0.2}
+                                     'Height': '0.3; 0.6', 'Corona': 0.5, 'CLimit': 0.2}
         config['Measurement'] = {'Iterations': 1, 'dest_path': os.getcwd(), 'csv_path': ''}
         with open(self.scan_path, 'w') as file:
             config.write(file)
@@ -472,6 +487,7 @@ class start_scan(tk.Tk):
             time.sleep(2)
     
     def close_scan_window(self):
+        self.scan_aborted = True
         sys.stdout = sys.__stdout__
         self.loop_var = False
         self.start_button.config(state='normal')
@@ -480,81 +496,123 @@ class start_scan(tk.Tk):
         self.scan_window.destroy()
     
     def start(self):
+        tab_index = self.tab_parent.index('current')
+        if tab_index == 0:
+            self.complete_scan()
+        elif tab_index == 1:
+            self.compressed_scan()
+        
+    def set_live_channel(self, *args):
+        try:
+            self.scan.set_live_channel(self.live_select.get())
+        except AttributeError:
+            pass
+    
+    def set_NE(self, *args):
+        self.bact_image.configure(image=self.images[self.ne_select.get().lower()])
+        
+    def compressed_scan(self):
+        self.update_dict()
+        self.start_button.config(state='disabled')
+        self.images = {}
+        self.images['live'] = tk.PhotoImage(master=self.window)
+        self.images['bact'] = tk.PhotoImage(master=self.window)
+        self.images['points'] = tk.PhotoImage(master=self.window)
+        self.create_scan_window()
+        self.scan_thread = threading.Thread(target=self.start_compressed)
+        self.scan_completed = False
+        self.scan_thread.start()
+        
+    def complete_scan(self):
         self.update_dict()
         print(self.scan_dict['AFM']['px'], type(self.scan_dict['AFM']['px']))
         self.start_button.config(state='disabled')
         repeats = int(float(self.entries['Iterations'].get()))
-        self.scan = Scan(copy.deepcopy(self.scan_dict))
-        #GUI
-        self.scan_window = tk.Toplevel(self.window)
-        self.scan_window.protocol("WM_DELETE_WINDOW", self.close_scan_window)
-        self.window_text = tk.Text(self.scan_window, wrap='word', height = 11, width=50)
-        self.window_text.grid(column=0, row=1, columnspan = 2, sticky='NSWE')
-        sys.stdout = StdoutRedirector(self.window_text, sys.stdout)
-        self.meas_paused = False
-        self.window_pause_txt = tk.StringVar()
-        self.window_pause = tk.Button(self.scan_window, textvariable=self.window_pause_txt, command=self.pause_meas)
-        self.window_pause_txt.set('Pause')
-        self.window_pause.grid(column=1, row=4, columnspan=2, sticky='NSWE')
-        self.progress = tk.DoubleVar()
-        self.progress.set(0)
-        self.window_progress = ttk.Progressbar(self.scan_window, orient="horizontal", length=300, mode="determinate", variable=self.progress, maximum=1)
-        self.window_progress.grid(column=0, row=2, columnspan = 4, sticky='NSWE')
-        self.num_of_px = self.scan_dict['AFM']['px'] * self.scan_dict['AFM']['py']
-        self.window_percent = tk.StringVar()
-        self.window_percent.set('0 / {}'.format(int(self.num_of_px)))
-        self.window_percent_label = tk.Label(self.scan_window, textvariable=self.window_percent)
-        self.window_percent_label.grid(column=1, row=3, columnspan=2, sticky='NSWE')
         #Previews
-        self.live_image = None
-        self.bact_image = None
-        self.cur_bact_image = None
-        #GUI for Previews
-        self.live_image_label = tk.Label(self.scan_window, relief='sunken', image=self.live_image)
-        self.live_image_label.grid(column=0, row=0, columnspan=2, sticky='NSWE')
-        self.bact_image_label = tk.Label(self.scan_window, relief='sunken', image=self.bact_image)
-        self.bact_image_label.grid(column=2, row=0, columnspan=2, sticky='NSWE')
-        self.cur_bact_label = tk.Label(self.scan_window, relief='sunken', image=self.cur_bact_image)
-        self.cur_bact_label.grid(column=2, row=1, columnspan=2, sticky='NSWE')
+        self.images = {}
+        self.images['live'] = tk.PhotoImage(master=self.window)
+        self.images['bact'] = tk.PhotoImage(master=self.window)
+        self.images['points'] = tk.PhotoImage(master=self.window)
+        #GUI
+        self.create_scan_window()
         #Config and Thread Start
         print('Iterations: ', repeats)
         self.scan_thread = threading.Thread(target=self.start_scan, args=(self.entries['Csv_path'].get(), repeats))
         #self.scan_thread = threading.Thread(target=self.random_loop, args=(x))
         self.scan_completed = False
         self.scan_thread.start()
+        
+    def create_scan_window(self):
+        self.scan_window = tk.Toplevel(self.window)
+        self.scan_window.protocol("WM_DELETE_WINDOW", self.close_scan_window)
+        self.window_text = tk.Text(self.scan_window, wrap='word', height = 11, width=50)
+        self.window_text.grid(column=0, row=3, columnspan = 2, sticky='NSWE')
+        sys.stdout = StdoutRedirector(self.window_text, sys.stdout)
+        self.meas_paused = False
+        self.window_pause_txt = tk.StringVar()
+        self.window_pause = tk.Button(self.scan_window, textvariable=self.window_pause_txt, command=self.pause_meas)
+        self.window_pause_txt.set('Pause')
+        self.window_pause.grid(column=1, row=6, columnspan=2, sticky='NSWE')
+        self.progress = tk.DoubleVar()
+        self.progress.set(0)
+        self.window_progress = ttk.Progressbar(self.scan_window, orient="horizontal", length=300, mode="determinate", variable=self.progress, maximum=1)
+        self.window_progress.grid(column=0, row=4, columnspan = 4, sticky='NSWE')
+        self.num_of_px = self.scan_dict['AFM']['px'] * self.scan_dict['AFM']['py']
+        self.window_percent = tk.StringVar()
+        self.window_percent.set('0 / {}'.format(int(self.num_of_px)))
+        self.window_percent_label = tk.Label(self.scan_window, textvariable=self.window_percent)
+        self.window_percent_label.grid(column=1, row=5, columnspan=2, sticky='NSWE')
+        #GUI for Previews
+        self.live_image = tk.Label(self.scan_window, relief='sunken', image=self.images['live'])
+        self.live_image.grid(column=0, row=1, columnspan=2, sticky='NSWE')
+        self.live_select_label = tk.Label(self.scan_window, text='Live Channel:')
+        self.live_select_label.grid(column=0, row=0, stick='NSE')
+        self.live_select = ttk.Combobox(self.scan_window, values=[x.upper() for x in self.scan_dict['Channel'].keys() if self.scan_dict['Channel'][x] == 1], state='readonly')
+        self.live_select.grid(column=1, row=0, sticky='NSE')
+        self.live_select.current(0)
+        self.live_select.bind("<<ComboboxSelected>>", self.set_live_channel)
+        
+        self.bact_image = tk.Label(self.scan_window, relief='sunken', image=self.images['bact'])
+        self.bact_image.grid(column=2, row=1, columnspan=2, sticky='NSWE')
+        self.ne_select = ttk.Combobox(self.scan_window, values=[x.capitalize() for x in self.images.keys()], state='readonly')
+        self.ne_select.grid(column=3, row=0, sticky='NSE')
+        self.ne_select.set('bact')
+        self.ne_select.bind("<<ComboboxSelected>>", self.set_NE)
+        self.points_image = tk.Label(self.scan_window, relief='sunken', image=self.images['points'])
+        self.points_image.grid(column=2, row=3, columnspan=2, sticky='NSWE')
     
     def start_scan(self, path, count):
+        self.scan_aborted = False
         for x in range(count):
-            self.scan = Scan(copy.deepcopy(self.scan_dict))
-            self.scan.bind_to('Progress', self.update_progress)
-            self.scan.bind_to('Live', self.update_live_image)
-            self.scan.bind_to('Bact', self.update_bact_image)
-            self.scan.bind_to('Cur_Bact', self.update_cur_image)
-            self.scan.start_scan(path)
-        print('Alles Fertig')
+            if not self.scan_completed:
+                self.scan = Scan(copy.deepcopy(self.scan_dict))
+                self.scan.bind_to('Progress', self.update_progress)
+                self.scan.bind_to('Live', self.update_image)
+                self.scan.bind_to('Bact', self.update_image)
+                self.scan.bind_to('Cur_Bact', self.update_image)
+                self.scan.full_scan(path, x)
+                self.scan.__exit__(None, None, None)
+        if not self.scan_aborted:
+            print('Alles Fertig')
+        self.scan_completed = True
+    
+    def start_compressed(self):
+        self.scan = Scan(copy.deepcopy(self.scan_dict))
+        self.scan.bind_to('Progress', self.update_progress)
+        self.scan.bind_to('Live', self.update_image)
+        self.scan.bind_to('Bact', self.update_image)
+        self.scan.bind_to('Cur_Bact', self.update_image)
+        self.scan.compressed_scan()
         self.scan_completed = True
     
     def update_progress(self, progress):
         self.progress.set(progress)
         self.window_percent.set('{} / {}'.format(int(progress * self.num_of_px), int(self.num_of_px)))
     
-    def update_live_image(self, live_image):
+    def update_image(self, name, image):
         with io.BytesIO() as output:
-            Image.fromarray(live_image).save(output, format="GIF")
-            self.live_image = tk.PhotoImage(master=self.scan_window, data = output.getvalue())
-        self.live_image_label.config(image=self.live_image)
-    
-    def update_bact_image(self, bact_image):
-        with io.BytesIO() as output:
-            Image.fromarray(bact_image).save(output, format="GIF")
-            self.bact_image = tk.PhotoImage(master=self.scan_window, data = output.getvalue())
-        self.bact_image_label.config(image=self.bact_image)
-    
-    def update_cur_image(self, cur_bact_image):
-        with io.BytesIO() as output:
-            Image.fromarray(cur_bact_image).save(output, format="GIF")
-            self.cur_bact_image = tk.PhotoImage(master=self.scan_window, data = output.getvalue())
-        self.cur_bact_label.config(image=self.cur_bact_image)
+            Image.fromarray(image).save(output, format='GIF')
+            self.images[name].put(output.getvalue())
         
 
 with start_scan() as scan:

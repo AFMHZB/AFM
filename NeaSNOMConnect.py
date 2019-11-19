@@ -7,6 +7,8 @@ class NeaSNOMConnect:
     def __init__(self, ip, path='/home/sachse03/pc/Python/updates/SDK/', con_needed = True):
         if con_needed:
             self._progress = 0
+            self._aborted = False
+            self.live_channel = 'Z'
             self._observers = {}
             self._observers['Progress'] = []
             self._observers['Cur_Data'] = []
@@ -36,6 +38,8 @@ class NeaSNOMConnect:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self._connected:
+            if exc_type == 'abort':
+                self._aborted = True
             self.neaMic.CancelCurrentProcedure()
             self.neaMic.RegulatorOff()
             self.neaMic.Dispose()
@@ -49,6 +53,9 @@ class NeaSNOMConnect:
     @property
     def neaClient(self):
         return self._neaClient
+    
+    def set_live_channel(self, channel):
+        self.live_channel = channel
     
     def bind_to(self, name, callback):
         self._observers[name].append(callback)
@@ -65,9 +72,6 @@ class NeaSNOMConnect:
         if self._scan:
             if self._scan.IsSuspended:
                 self._scan.Resume()
-    
-    def abort(self):
-        raise ScanAbortException
                 
     def get_progress(self):
         return self._scan.Progress
@@ -138,21 +142,24 @@ class NeaSNOMConnect:
             print('Scanning..')
             while not self._scan.IsCompleted:
                 self.set_progress(self._scan.Progress)
-                self.set_data(self._channel['Z'].GetData())
+                self.set_data(self._channel[self.live_channel].GetData())
+                time.sleep(0.1)
+            if self._aborted:
+                return {}
+            else:
+                print('Done!')
+                self._data = {}
+                for c in self._channel.keys():
+                    self._data[c] = self._channel[c].GetData()
+                self.neaMic.RegulatorOff()
                 time.sleep(0.5)
-            print('Done!')
-            self._data = {}
-            for c in self._channel.keys():
-                self._data[c] = self._channel[c].GetData()
-            self.neaMic.RegulatorOff()
-            time.sleep(0.5)
-            return self._data
+                return self._data
 
         else:
             print('NeaSNOMConnect: Not Connected.')
-            return None
+            return {}
 
-    def scan_fourier(self, x0, y0, dx, dy, x_res, y_res, angle, t_int, offset, distance, averaging, resolution, source, channel_names):
+    def scan_fourier(self, x0, y0, dx, dy, x_res, y_res, angle_f, t_int_f, offset, distance, averaging, resolution, source, channel_names):
         if self._connected:
             if not self.in_contact():
                 self.neaMic.AutoApproach(0.8)
@@ -163,8 +170,8 @@ class NeaSNOMConnect:
             self._scan.set_ScanAreaHeight(dy)
             self._scan.set_ResolutionColumns(x_res)
             self._scan.set_ResolutionRows(y_res)
-            self._scan.set_ScanAngle(angle)
-            self._scan.set_SamplingTime(t_int)
+            self._scan.set_ScanAngle(angle_f)
+            self._scan.set_SamplingTime(t_int_f)
             self._scan.set_InterferometerOffset(offset)
             self._scan.set_InterferometerDistance(distance)
             self._scan.set_Averaging(averaging)
@@ -177,13 +184,16 @@ class NeaSNOMConnect:
             print('Scanning..')
             while not self._scan.IsCompleted:
                 time.sleep(0.1)
-            print('Done!')
-            _data = {}
-            for c in _channel.keys():
-                _data[c] = _channel[c].GetData()
-            self.neaMic.RegulatorOff()
-            time.sleep(0.5)
-            return _data
+            if self._aborted:
+                return {}
+            else:
+                print('Done!')
+                _data = {}
+                for c in _channel.keys():
+                    _data[c] = _channel[c].GetData()
+                self.neaMic.RegulatorOff()
+                time.sleep(0.5)
+                return _data
         else:
             print('NeaSNOMConnect: Not Connected.')
-            return None
+            return {}

@@ -58,6 +58,7 @@ class ScanAbortException(Exception):
 
 class Scan:
     def __init__(self, scan_dict):
+        self.exit = False
         self.observers = {}
         self.observers['Progress'] = []
         self.observers['Live'] = []
@@ -94,6 +95,12 @@ class Scan:
         except AttributeError:
             pass
         return
+    
+    def set_live_channel(self, channel):
+        try:
+            self.neaConnect.set_live_channel(channel)
+        except AttributeError:
+            pass
     
     def bind_to(self, name, callback):
         self.observers[name].append(callback)
@@ -157,75 +164,99 @@ class Scan:
         live_image = cv2.normalize(cur_data, None,0,255,cv2.NORM_MINMAX, cv2.CV_8U)
         live_image = cv2.resize(live_image, self.preview_size)
         for callback in self.observers['Live']:
-            callback(live_image)
+            callback('live', live_image)
             
     def set_bact_image(self, image):
         bact_image = cv2.resize(image, self.preview_size)
         for callback in self.observers['Bact']:
-            callback(bact_image)
+            callback('bact', bact_image)
     
     def set_cur_image(self, image):
         cur_image = cv2.resize(image, self.preview_size)
         for callback in self.observers['Cur_Bact']:
-            callback(cur_image)
-                    
-    def start_scan(self, csv_path=''):
-        try:
-            #self.set_live_image(np.zeros(self.preview_size))
-            self.set_bact_image(np.zeros(self.preview_size))
-            self.set_cur_image(np.zeros(self.preview_size))
-            now = datetime.now().strftime('%Y-%m-%d %H%M')
-            self.hdf5_dict['Info']['datetime'] = now
-            os.makedirs(self.hdf5_dict['Info']['Measurement']['dest_path'], exist_ok = True)
-            all_shorts = []
-            operators = self.hdf5_dict['Info']['operators']
-            operators = operators if isinstance(operators, list) else [operators]
-            for op in operators:
-                shorts = ''
-                for name in op.split():
-                    shorts += name[0].upper()
-                all_shorts.append(shorts)
+            callback('points', cur_image)
+    
+    def scan_setup(self, step):
+        #self.set_live_image(np.zeros(self.preview_size))
+        self.set_bact_image(np.zeros(self.preview_size))
+        self.set_cur_image(np.zeros(self.preview_size))
+        now = datetime.now().strftime('%Y-%m-%d %H%M')
+        self.hdf5_dict['Info']['datetime'] = now
+        os.makedirs(self.hdf5_dict['Info']['Measurement']['dest_path'], exist_ok = True)
+        all_shorts = []
+        operators = self.hdf5_dict['Info']['operators']
+        operators = operators if isinstance(operators, list) else [operators]
+        for op in operators:
+            shorts = ''
+            for name in op.split():
+                shorts += name[0].upper()
+            all_shorts.append(shorts)
+        
+        ops = '_'.join(all_shorts)
+        
+        if self.hdf5_dict['Info']['AFM']['dx'] == self.hdf5_dict['Info']['AFM']['dy']:
+            scanarea = str(self.hdf5_dict['Info']['AFM']['dx'])
+        else:
+            scanarea = '{}x{}'.format(self.hdf5_dict['Info']['AFM']['dx'], self.hdf5_dict['Info']['AFM']['dy'])
             
-            ops = '_'.join(all_shorts)
-            
-            if self.hdf5_dict['Info']['AFM']['dx'] == self.hdf5_dict['Info']['AFM']['dy']:
-                scanarea = str(self.hdf5_dict['Info']['AFM']['dx'])
-            else:
-                scanarea = '{}x{}'.format(self.hdf5_dict['Info']['AFM']['dx'], self.hdf5_dict['Info']['AFM']['dy'])
-                
-            if self.hdf5_dict['Info']['AFM']['px'] == self.hdf5_dict['Info']['AFM']['py']:
-                pixelarea = str(self.hdf5_dict['Info']['AFM']['px'])
-            else:
-                pixelarea = '{}x{}'.format(self.hdf5_dict['Info']['AFM']['px'], self.hdf5_dict['Info']['AFM']['py'])
+        if self.hdf5_dict['Info']['AFM']['px'] == self.hdf5_dict['Info']['AFM']['py']:
+            pixelarea = str(self.hdf5_dict['Info']['AFM']['px'])
+        else:
+            pixelarea = '{}x{}'.format(self.hdf5_dict['Info']['AFM']['px'], self.hdf5_dict['Info']['AFM']['py'])
 
-            scan_name = '{} {}_{}_{}µm_{}px'.format(now, ops, self.hdf5_dict['Info']['project'], scanarea, pixelarea)
-            self.hdf5_path = os.path.join(self.hdf5_dict['Info']['Measurement']['dest_path'], scan_name + '.hdf5')
+        scan_name = '{} {}_{}_{}µm_{}px_{}/{}'.format(now, ops, self.hdf5_dict['Info']['project'], scanarea, pixelarea, step, self.hdf5_dict['Info']['Measurement']['Iterations'])
+        self.hdf5_path = os.path.join(self.hdf5_dict['Info']['Measurement']['dest_path'], scan_name + '.hdf5')
             
+    def afm_scan(self):
+        self.neaConnect = NeaSNOMConnect('192.168.89.44', os.path.join(os.getcwd(), 'updates/SDK/'), con_needed = True)
+        self.neaConnect.bind_to('Progress', self.set_progress)
+        self.neaConnect.bind_to('Cur_Data', self.set_live_image)
+        
+        self.hdf5_dict['Info']['Version'] = {}
+        self.hdf5_dict['Info']['Version']['Client'] = self.neaConnect.client_version()
+        self.hdf5_dict['Info']['Version']['Server'] = self.neaConnect.server_version()
+        afm_data = self.neaConnect.scanAFM(**self.hdf5_dict['Info']['AFM'], channel_names = self.channel)
+        if not afm_data == {}:
+            data_path = os.path.join(self.hdf5_dict['Info']['Measurement']['dest_path'], self.hdf5_dict['Info']['datetime'] + '_CSV')
+            os.makedirs(data_path, exist_ok = True)
+            for k in afm_data.keys():
+                afm_data[k] = asNumpyArray(afm_data[k])
+                np.savetxt(os.path.join(data_path, k + '.csv'), afm_data[k], delimiter=',')
+        return afm_data
+    
+    def compressed_scan(self):
+        self.scan_setup()
+        for x in range(5):
+            afm_data = self.afm_scan()
+            ratio = self.hdf5_dict['Info']['AFM']['dx'] / self.hdf5_dict['Info']['AFM']['px'] #um / px
+            f = FindBacteria(self.hdf5_dict['Info']['Characteristics'], ratio)
+            data = f.full_correction(afm_data['Z'], afm_data['R-Z'], self.hdf5_dict['Info']['AFM']['hlimit'] * 10**(-6))
+            contours = f.find_all_contours(data)
+            new_center = f.get_center(contours)
+            if old_center:
+                drift_x = new_center[0] - old_center[0]
+                drift_y = new_center[1] - old_center[1]
+                print('Drift: ', (drift_x, drift_y))
+                self.hdf5_dict['Info']['AFM']['x0'] += drift_x
+                self.hdf5_dict['Info']['AFM']['y0'] += drift_y
+            old_center = new_center
+            time.sleep(60)
+        
+        
+                    
+    def full_scan(self, csv_path='', step):
+        try:
+            self.scan_setup(step)
             new_meas = (csv_path == '')
-            
-            self.neaConnect = NeaSNOMConnect('192.168.89.44', os.path.join(os.getcwd(), 'updates/SDK/'), con_needed = new_meas)
-            self.neaConnect.bind_to('Progress', self.set_progress)
-            self.neaConnect.bind_to('Cur_Data', self.set_live_image)
                 
             if new_meas:
-                self.hdf5_dict['Info']['Version'] = {}
-                self.hdf5_dict['Info']['Version']['Client'] = self.neaConnect.client_version()
-                self.hdf5_dict['Info']['Version']['Server'] = self.neaConnect.server_version()
-                afm_data = self.neaConnect.scanAFM(**self.hdf5_dict['Info']['AFM'], channel_names = self.channel)
-                data_path = os.path.join(self.hdf5_dict['Info']['Measurement']['dest_path'], now + '_CSV')
-                os.makedirs(data_path, exist_ok = True)
-                for k in afm_data.keys():
-                    afm_data[k] = asNumpyArray(afm_data[k])
-                    np.savetxt(os.path.join(data_path, k + '.csv'), afm_data[k], delimiter=',')
-                #self.set_live_image(afm_data['Z'])
+                afm_data = self.afm_scan()
             else:
                 afm_data = {}
                 for root, dirs, files in os.walk(csv_path):
                     for f in files:
                         c = f.split('.')[0]
                         afm_data[c] = np.loadtxt(os.path.join(root, f), delimiter=',')
-                        
-                self.hdf5_dict['Data']['AFM'] = afm_data
                 
             if 'Z' in afm_data.keys() and 'R-Z' in afm_data.keys():
                 ratio = self.hdf5_dict['Info']['AFM']['dx'] / self.hdf5_dict['Info']['AFM']['px'] #um / px

@@ -65,17 +65,24 @@ class FindBacteria:
         data = self.plane_correction(data)
         data = self.range_correction(data, limit)
         return data
-        
     
-    def find_bacteria(self, data, top):
-        norm = cv2.normalize(data,None,0,255,cv2.NORM_MINMAX , cv2.CV_8U)
-        img = cv2.bilateralFilter(norm.copy(),10,50,50, cv2.BORDER_WRAP)
+    def find_all_contours(self, data):
+        self.norm = cv2.normalize(data,None,0,255,cv2.NORM_MINMAX , cv2.CV_8U)
+        img = cv2.bilateralFilter(self.norm.copy(),10,50,50, cv2.BORDER_WRAP)
         _,thresh = cv2.threshold(img,100,255,cv2.THRESH_BINARY)
         canny = self.auto_canny(thresh)
         contours, _ = cv2.findContours(canny, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
         contours = [cv2.convexHull(x) for x in contours]
-        self._dict['Contours_IMG'] = cv2.drawContours(norm.copy(), contours, -1, 255, 2)
-        
+        self._dict['Contours_IMG'] = cv2.drawContours(self.norm.copy(), contours, -1, 255, 2)
+        return contours
+    
+    def get_center(self, contours):
+        cont = contours.sort(key=cv2.contourArea, reverse=True)
+        M = cv2.moments(cont)
+        return (int(M['m10']/M['m00']), int(M['m01']/M['m00']))
+    
+    def find_bacteria(self, data, top):
+        contours = self.find_all_contours(data)
         bacteria = []
         
         for c in contours:
@@ -91,7 +98,7 @@ class FindBacteria:
                 if self._height[0] * 10**(-6) <= h_upper <= self._height[1] * 10**(-6):
                     bacteria.append( (c, angle) )
                     
-        self._dict['Bacteria_IMG'] = cv2.drawContours(norm.copy(), [x[0] for x in bacteria], -1, 255, 2)
+        self._dict['Bacteria_IMG'] = cv2.drawContours(self.norm.copy(), [x[0] for x in bacteria], -1, 255, 2)
         if len(bacteria) > 0:
             bac_found = True
             counter = 0
@@ -150,10 +157,11 @@ class FindBacteria:
                 if len(references) > 0:
                     references.sort(key=lambda x: cv2.pointPolygonTest(bact[0], (x[0], x[1]), True), reverse=True)
                     self._dict['Bacteria'][bact_name]['Points']['Reference']['Coord'] = references[0]
-                    data_sqr_img = cv2.normalize(norm.copy(),None,0,255,cv2.NORM_MINMAX , cv2.CV_8U)
+                    data_sqr_img = cv2.normalize(self.norm.copy(),None,0,255,cv2.NORM_MINMAX , cv2.CV_8U)
                     for key in self._dict['Bacteria'][bact_name]['Points'].keys():
                         cv2.circle(data_sqr_img, self._dict['Bacteria'][bact_name]['Points'][key]['Coord'], 3, 255, -1)
                     #cv2.circle(data_sqr_img, references[0], 3, 255, -1)
+                    cv2.rectangle(data_sqr_img, (box_x, box_y), (box_x+width, box_y+height), 255, 1)
                     self._dict['Bacteria'][bact_name]['dxy'] = new_res * 2 * self._ratio
                     self._dict['Bacteria'][bact_name]['pxy'] = new_res * 2
                     self._dict['Bacteria'][bact_name]['Meassurement_Points_IMG'] = data_sqr_img
