@@ -6,6 +6,8 @@ import h5py as hdf5
 from PIL import Image
 from contextlib import redirect_stdout
 import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import matplotlib.animation as animation
 import io
 import cv2
 import numbers
@@ -15,6 +17,7 @@ import configparser as cfg
 import threading
 import queue
 from Scan import *
+from Epics_Control import Epics_Control
 
 class StdoutRedirector(object):
     def __init__(self,text_widget, stream):
@@ -62,6 +65,7 @@ def read_config(cfg_path):
 
 class start_scan(tk.Tk):
     def __init__(self):
+        self.IMAGE_LABEL = ['live_afm', 'bact', 'points', 'afm', 'plot']
         self.scan_path = os.path.join(os.getcwd(), 'scan.ini')
         if not os.path.exists(self.scan_path):
             self.make_ini()
@@ -243,7 +247,9 @@ class start_scan(tk.Tk):
         self.repeat_label = tk.Label(self.button_frame, text = 'Iterations')
         self.repeat_label.grid(row = 1, column = 0, sticky=tk.N + tk.S + tk.E + tk.W)
         self.entries['Iterations'] = tk.Spinbox(self.button_frame, from_=1, to=10)
-        self.entries['Iterations'].grid(row = 1, column = 1, columnspan=2, sticky=tk.N + tk.S + tk.E + tk.W)
+        self.entries['Iterations'].grid(row = 1, column = 1, columnspan=1, sticky=tk.N + tk.S + tk.E + tk.W)
+        self.epics_label = tk.Label(self.button_frame, text = 'Epics Control')
+        self.epics_label.grid(row = 1, column = 2, sticky = 'NSWE') #####TODO######
         self.start_button = tk.Button(self.button_frame, text='Start', command=self.start)
         self.start_button.grid(row = 1, column = 3, rowspan=2, sticky=tk.N + tk.S + tk.E + tk.W)
         self.make_entry(self.button_frame, 2, 0, 'Dest_path')
@@ -258,7 +264,7 @@ class start_scan(tk.Tk):
     
     def __exit__(self, exc_type, exc_val, exc_tb):
         try:
-            self.scan.__exit__(exc_type, exc_val, exc_tb)
+            self.scan.__exit__('abort', exc_val, exc_tb)
         except (AttributeError, RecursionError):
             pass
         try:
@@ -269,7 +275,7 @@ class start_scan(tk.Tk):
     
     def process_message_queue(self, event):
         while self.message_queue.empty() is False:
-            message = self.message_queue.get(block=False)
+            message, data = self.message_queue.get(block=False)
             if message == 'quit_scan':
                 sys.stdout = sys.__stdout__
                 self.start_button.config(state='normal')
@@ -278,9 +284,30 @@ class start_scan(tk.Tk):
                 except AttributeError:
                     pass
                 self.scan_window.destroy()
+            if message == 'pause_scan':
+                self.pause_meas()
+            if message == 'epics_stop':
+                print('Detected Start of Injection.')
+                try:
+                    self.scan.set_wait_for_injection(True)
+                except AttributeError:
+                    pass
+            if message == 'epics_restart':
+                print('Injection is finished.')
+                try:
+                    self.scan.set_wait_for_injection(False)
+                except AttributeError:
+                    pass
+            if message == 'epics_error':
+                print('Detected Currency Drop. Old: {} - New: {}'.format(data[0], data[1]))
+                try:
+                    self.scan.set_wait_for_injection(True)
+                except AttributeError:
+                    pass
+                
             
-    def send_message_to_ui(self, message):
-        self.message_queue.put(message)
+    def send_message_to_ui(self, message, data=None):
+        self.message_queue.put((message, data))
         self.window.event_generate(self.message_event, when='tail')
     
     def csv_change(self):
@@ -479,12 +506,6 @@ class start_scan(tk.Tk):
             self.window_pause_txt.set('Resume')
             self.meas_paused = True
             self.scan.pause()
-            
-    def random_loop(self, count):
-        self.loop_var = True
-        while self.loop_var:
-            print('Loop ', count, ': Random Action...')
-            time.sleep(2)
     
     def close_scan_window(self):
         self.scan_aborted = True
@@ -502,20 +523,29 @@ class start_scan(tk.Tk):
         elif tab_index == 1:
             self.compressed_scan()
         
-    def set_live_channel(self, *args):
+    def set_afm_channel(self, *args):
         try:
-            self.scan.set_live_channel(self.live_select.get())
+            self.scan.set_afm_channel(self.live_select.get())
         except AttributeError:
             pass
     
-    def set_NE(self, *args):
-        self.bact_image.configure(image=self.images[self.ne_select.get().lower()])
+    def set_plot_channel(self, *args):
+        try:
+            self.scan.set_plot_channel(self.plot_select.get())
+        except AttributeError:
+            pass
+    
+    def set_view_Left(self, *args):
+        self.image_Left.configure(image=self.images[self.left_select.get().lower()])
+        
+    def set_view_Right(self, *args):
+        self.image_Right.configure(image=self.images[self.right_select.get().lower()])
         
     def compressed_scan(self):
         self.update_dict()
         self.start_button.config(state='disabled')
         self.images = {}
-        self.images['live'] = tk.PhotoImage(master=self.window)
+        self.images['live_afm'] = tk.PhotoImage(master=self.window)
         self.images['bact'] = tk.PhotoImage(master=self.window)
         self.images['points'] = tk.PhotoImage(master=self.window)
         self.create_scan_window()
@@ -530,17 +560,20 @@ class start_scan(tk.Tk):
         repeats = int(float(self.entries['Iterations'].get()))
         #Previews
         self.images = {}
-        self.images['live'] = tk.PhotoImage(master=self.window)
-        self.images['bact'] = tk.PhotoImage(master=self.window)
-        self.images['points'] = tk.PhotoImage(master=self.window)
+        for label in self.IMAGE_LABEL:
+            self.images[label] = tk.PhotoImage(master=self.window)
         #GUI
         self.create_scan_window()
         #Config and Thread Start
         print('Iterations: ', repeats)
         self.scan_thread = threading.Thread(target=self.start_scan, args=(self.entries['Csv_path'].get(), repeats))
-        #self.scan_thread = threading.Thread(target=self.random_loop, args=(x))
+        #self.scan_thread = threading.Thread(target=self.test_fourier)
         self.scan_completed = False
         self.scan_thread.start()
+        self.check_epics = True
+        if self.check_epics:
+            self.epics_thread = threading.Thread(target=self.check_for_epics)
+            self.epics_thread.start()
         
     def create_scan_window(self):
         self.scan_window = tk.Toplevel(self.window)
@@ -563,38 +596,76 @@ class start_scan(tk.Tk):
         self.window_percent_label = tk.Label(self.scan_window, textvariable=self.window_percent)
         self.window_percent_label.grid(column=1, row=5, columnspan=2, sticky='NSWE')
         #GUI for Previews
-        self.live_image = tk.Label(self.scan_window, relief='sunken', image=self.images['live'])
-        self.live_image.grid(column=0, row=1, columnspan=2, sticky='NSWE')
+        self.live_plot = tk.Label(self.scan_window, relief='sunken')
+        self.live_plot.grid(column=0, row=1, columnspan=3, sticky='NSWE')
+        self.fig = plt.figure(figsize=(10, 4), dpi=100)
+        self.ax = self.fig.add_subplot(1,1,1)
+        self.ax.yaxis.set_visible(False)
+        self.ax.xaxis.set_visible(False)
+        self.fig.tight_layout()
+        self.canvas = FigureCanvasTkAgg(self.fig, master = self.live_plot)
+        self.canvas._tkcanvas.pack(side = tk.TOP, fill = tk.BOTH, expand = 1)
+        self.avrg_pointer = 0
+        self.plot_data = np.zeros((1, 100))
+        self.ani = animation.FuncAnimation(self.fig, self.animate_plot, interval=100)
+        self.plot_select = ttk.Combobox(self.scan_window, values=[x.upper() for x in self.scan_dict['Channel'].keys() if self.scan_dict['Channel'][x] == 1], state='readonly')
+        self.plot_select.grid(column=2, row=0, sticky='NSW')
+        self.plot_select.set('O2A')
+        self.plot_select.bind("<<ComboboxSelected>>", self.set_plot_channel)
+        self.live_image = tk.Label(self.scan_window, relief='sunken', image=self.images['live_afm'])
+        self.live_image.grid(column=3, row=1, columnspan=1, sticky='NSWE')
         self.live_select_label = tk.Label(self.scan_window, text='Live Channel:')
-        self.live_select_label.grid(column=0, row=0, stick='NSE')
+        self.live_select_label.grid(column=0, row=0, stick='NSW')
         self.live_select = ttk.Combobox(self.scan_window, values=[x.upper() for x in self.scan_dict['Channel'].keys() if self.scan_dict['Channel'][x] == 1], state='readonly')
-        self.live_select.grid(column=1, row=0, sticky='NSE')
+        self.live_select.grid(column=3, row=0, sticky='NSW')
         self.live_select.current(0)
-        self.live_select.bind("<<ComboboxSelected>>", self.set_live_channel)
+        self.live_select.bind("<<ComboboxSelected>>", self.set_afm_channel)
         
-        self.bact_image = tk.Label(self.scan_window, relief='sunken', image=self.images['bact'])
-        self.bact_image.grid(column=2, row=1, columnspan=2, sticky='NSWE')
-        self.ne_select = ttk.Combobox(self.scan_window, values=[x.capitalize() for x in self.images.keys()], state='readonly')
-        self.ne_select.grid(column=3, row=0, sticky='NSE')
-        self.ne_select.set('bact')
-        self.ne_select.bind("<<ComboboxSelected>>", self.set_NE)
-        self.points_image = tk.Label(self.scan_window, relief='sunken', image=self.images['points'])
-        self.points_image.grid(column=2, row=3, columnspan=2, sticky='NSWE')
+        self.image_Left = tk.Label(self.scan_window, relief='sunken', image=self.images['bact'])
+        self.image_Left.grid(column=2, row=3, columnspan=1, sticky='NSWE')
+        self.left_select = ttk.Combobox(self.scan_window, values=[x.capitalize() for x in self.images.keys()], state='readonly')
+        self.left_select.grid(column=2, row=2, sticky='NSW')
+        self.left_select.set('bact')
+        self.left_select.bind("<<ComboboxSelected>>", self.set_view_Left)
+        self.image_Right = tk.Label(self.scan_window, relief='sunken', image=self.images['points'])
+        self.image_Right.grid(column=3, row=3, columnspan=1, sticky='NSWE')
+        self.right_select = ttk.Combobox(self.scan_window, values=[x.capitalize() for x in self.images.keys()], state='readonly')
+        self.right_select.grid(column=3, row=2, sticky='NSW')
+        self.right_select.set('points')
+        self.right_select.bind("<<ComboboxSelected>>", self.set_view_Right)
     
     def start_scan(self, path, count):
         self.scan_aborted = False
         for x in range(count):
             if not self.scan_completed:
                 self.scan = Scan(copy.deepcopy(self.scan_dict))
-                self.scan.bind_to('Progress', self.update_progress)
-                self.scan.bind_to('Live', self.update_image)
-                self.scan.bind_to('Bact', self.update_image)
-                self.scan.bind_to('Cur_Bact', self.update_image)
-                self.scan.full_scan(path, x)
+                for label in self.IMAGE_LABEL:
+                    self.scan.bind_to(label, self.update_image)
+                self.scan.bind_to('progress', self.update_progress)
+                self.scan.bind_to('live_plot', self.update_plot)
+                self.scan.full_scan(x+1, path)
                 self.scan.__exit__(None, None, None)
         if not self.scan_aborted:
             print('Alles Fertig')
         self.scan_completed = True
+        
+    def test_fourier(self):
+        self.scan = Scan(copy.deepcopy(self.scan_dict))
+        self.scan.bind_to('live_plot', self.update_plot)
+        self.scan.bind_to('bact', self.update_image)
+        self.scan.bind_to('points', self.update_image)
+        self.fig = plt.figure(figsize=(10,4), dpi=100)
+        self.ax = self.fig.add_subplot(1,1,1)
+        self.ax.yaxis.set_visible(False)
+        self.ax.xaxis.set_visible(False)
+        self.fig.tight_layout()
+        self.canvas = FigureCanvasTkAgg(self.fig, master = self.live_plot)
+        self.canvas._tkcanvas.pack(side = tk.TOP, fill = tk.BOTH, expand = 1)
+        self.avrg_pointer = 0
+        self.plot_data = np.zeros((1, 100))
+        self.ani = animation.FuncAnimation(self.fig, self.animate_plot, interval=100)
+        self.scan.test_fourier()
+        self.scan.__exit__('abort', None, None)
     
     def start_compressed(self):
         self.scan = Scan(copy.deepcopy(self.scan_dict))
@@ -610,9 +681,40 @@ class start_scan(tk.Tk):
         self.window_percent.set('{} / {}'.format(int(progress * self.num_of_px), int(self.num_of_px)))
     
     def update_image(self, name, image):
-        with io.BytesIO() as output:
-            Image.fromarray(image).save(output, format='GIF')
-            self.images[name].put(output.getvalue())
+        if name == 'plot':
+            with io.BytesIO() as output:
+                data = image[0, 0]
+                fig = plt.figure(figsize=(4,4), dpi=100)
+                ax = fig.add_subplot(1,1,1)
+                ax.xaxis.set_visible(False)
+                ax.yaxis.set_visible(False)
+                ax.plot(data[-1])
+                fig.tight_layout()
+                plt.savefig(output, format='png')
+                plt.clf()
+                self.images['plot'].put(output.getvalue())
+        else:
+            with io.BytesIO() as output:
+                Image.fromarray(image).save(output, format='GIF')
+                self.images[name].put(output.getvalue())
+    
+    def update_plot(self, raw):
+        self.plot_data = asNumpyArray(raw)[0, 0]
+    
+    def animate_plot(self, i):
+        self.ax.clear()
+        for x in range(len(self.plot_data)-1, 0, -1):
+            if not all(np.isnan(self.plot_data[x])):
+                self.avrg_pointer = x
+                break
+        if self.avrg_pointer > 0:
+            self.ax.plot(self.plot_data[self.avrg_pointer-1], 'b', linewidth=0.5, alpha=0.2)
+        self.ax.plot(self.plot_data[self.avrg_pointer], 'r', linewidth=0.5)
+        
+    def check_for_epics(self):
+        epics_ctrl = Epics_Control()
+        epics_ctrl.bind_to(self.send_message_to_ui)
+        
         
 
 with start_scan() as scan:

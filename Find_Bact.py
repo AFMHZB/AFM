@@ -162,8 +162,8 @@ class FindBacteria:
                         cv2.circle(data_sqr_img, self._dict['Bacteria'][bact_name]['Points'][key]['Coord'], 3, 255, -1)
                     #cv2.circle(data_sqr_img, references[0], 3, 255, -1)
                     cv2.rectangle(data_sqr_img, (box_x, box_y), (box_x+width, box_y+height), 255, 1)
-                    self._dict['Bacteria'][bact_name]['dxy'] = new_res * 2 * self._ratio
-                    self._dict['Bacteria'][bact_name]['pxy'] = new_res * 2
+                    self._dict['Bacteria'][bact_name]['dxy'] = round(max(width, height) * self._ratio, 2)
+                    self._dict['Bacteria'][bact_name]['pxy'] = round(max(width, height))
                     self._dict['Bacteria'][bact_name]['Meassurement_Points_IMG'] = data_sqr_img
         else:
             bac_found = False

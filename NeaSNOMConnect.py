@@ -8,12 +8,16 @@ class NeaSNOMConnect:
         if con_needed:
             self._progress = 0
             self._aborted = False
-            self.live_channel = 'Z'
+            self.afm_channel = 'Z'
+            self.plot_channel = 'O2A'
             self._observers = {}
             self._observers['Progress'] = []
             self._observers['Cur_Data'] = []
+            self._observers['Fourier'] = []
             self._ip = ip
             self._path = path
+            self._wait_for_injection = False
+            self._meas_completed = False
             ##### Import all DLLs in the folder
             sys.path.append(self._path)
             ##### Load the main DLL
@@ -40,6 +44,8 @@ class NeaSNOMConnect:
         if self._connected:
             if exc_type == 'abort':
                 self._aborted = True
+            self._wait_for_injection = False
+            self._meas_completed = True
             self.neaMic.CancelCurrentProcedure()
             self.neaMic.RegulatorOff()
             self.neaMic.Dispose()
@@ -54,8 +60,11 @@ class NeaSNOMConnect:
     def neaClient(self):
         return self._neaClient
     
-    def set_live_channel(self, channel):
-        self.live_channel = channel
+    def set_afm_channel(self, channel):
+        self.afm_channel = channel
+        
+    def set_plot_channel(self, channel):
+        self.plot_channel = channel
     
     def bind_to(self, name, callback):
         self._observers[name].append(callback)
@@ -84,11 +93,19 @@ class NeaSNOMConnect:
     def set_data(self, data):
         for callback in self._observers['Cur_Data']:
             callback(data)
+            
+    def set_fourier_data(self, data):
+        for callback in self._observers['Fourier']:
+            callback(data)
         
+    def get_wait_for_injection(self):
+        return self._wait_for_injection
     
-    def is_completed(self):
-        print('Inside: ', self._scan.IsCompleted)
-        return self._scan.IsCompleted
+    def set_wait_for_injection(self, boolean):
+        self._wait_for_injection = boolean
+    
+    def get_meas_completed(self):
+        return self._meas_completed
     
     def is_started(self):
         return self._scan.IsStarted
@@ -142,7 +159,7 @@ class NeaSNOMConnect:
             print('Scanning..')
             while not self._scan.IsCompleted:
                 self.set_progress(self._scan.Progress)
-                self.set_data(self._channel[self.live_channel].GetData())
+                self.set_data(self._channel[self.afm_channel].GetData())
                 time.sleep(0.1)
             if self._aborted:
                 return {}
@@ -182,18 +199,24 @@ class NeaSNOMConnect:
             for c in channel_names:
                 _channel[c] = _image.GetChannel(c)
             print('Scanning..')
-            while not self._scan.IsCompleted:
+            while not self._scan.IsCompleted and not self._wait_for_injection:
+                self.set_progress(self._scan.Progress)
+                self.set_fourier_data(_channel[self.plot_channel].GetData())
                 time.sleep(0.1)
-            if self._aborted:
-                return {}
-            else:
-                print('Done!')
+            if self._scan.IsCompleted and not self._aborted:
+                self._meas_completed = True
                 _data = {}
                 for c in _channel.keys():
                     _data[c] = _channel[c].GetData()
                 self.neaMic.RegulatorOff()
+                print('Done!')
                 time.sleep(0.5)
                 return _data
+            else:
+                self._scan.Cancel()
+                self.neaMic.RegulatorOff()
+                self._meas_completed = False
+                return {}
         else:
             print('NeaSNOMConnect: Not Connected.')
             return {}
