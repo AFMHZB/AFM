@@ -1,7 +1,5 @@
 # AFM Bacteria Identification
 
-[![N|Solid](https://cldup.com/dTxpPi9lDf.thumb.png)](https://nodesource.com/products/nsolid)
-
 # Disclaimer
 This Software tries to communicate directly with the neaSNOM Microscope using SDKs provided by neaspec GmbH. Without them this Software will not work. Also the developer takes no responsibility for any damage caused while using this program, so use with caution and at own risk.
 
