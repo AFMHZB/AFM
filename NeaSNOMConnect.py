@@ -106,6 +106,9 @@ class NeaSNOMConnect:
     
     def get_meas_completed(self):
         return self._meas_completed
+
+    def set_meas_completed(self, boolean):
+        self._meas_completed = boolean
     
     def is_started(self):
         return self._scan.IsStarted
@@ -140,7 +143,7 @@ class NeaSNOMConnect:
     def scanAFM(self, x0, y0, dx, dy, px, py, angle, t_int, setpoint, hlimit, channel_names=['Z', 'R-Z']):
         if self._connected:
             if not self.in_contact():
-                self.neaMic.AutoApproach(0.8)#80% setpoint
+                self.neaMic.AutoApproach(setpoint)
             self._scan = self.neaMic.PrepareAfmScan()
             self._scan.set_CenterX(x0)
             self._scan.set_CenterY(y0)
@@ -176,10 +179,10 @@ class NeaSNOMConnect:
             print('NeaSNOMConnect: Not Connected.')
             return {}
 
-    def scan_fourier(self, x0, y0, dx, dy, x_res, y_res, angle_f, t_int_f, offset, distance, averaging, resolution, source, channel_names):
+    def scan_fourier(self, x0, y0, dx, dy, x_res, y_res, angle_f, t_int_f, setpoint, offset, distance, averaging, resolution, source, channel_names):
         if self._connected:
             if not self.in_contact():
-                self.neaMic.AutoApproach(0.8)
+                self.neaMic.AutoApproach(setpoint)
             self._scan = self.neaMic.PrepareFourierScan()
             self._scan.set_CenterX(x0)
             self._scan.set_CenterY(y0)
@@ -220,3 +223,41 @@ class NeaSNOMConnect:
         else:
             print('NeaSNOMConnect: Not Connected.')
             return {}
+        
+    def scan_whitelight(self, x0, y0, dx, dy, px, py, angle, t_int, setpoint, hlimit, channel_names):
+        if self._connected:
+            if not self.in_contact():
+                self.neaMic.AutoApproach(0.8)
+            self._scan = self.neaMic.PrepareWhitelightScan()
+            self._scan.set_CenterX(x0)
+            self._scan.set_CenterY(y0)
+            self._scan.set_ScanAreaWidth(dx)
+            self._scan.set_ScanAreaHeight(dy)
+            self._scan.set_ResolutionColumns(px)
+            self._scan.set_ResolutionRows(py)
+            self._scan.set_ScanAngle(angle)
+            self._scan.set_SamplingTime(t_int)
+            #self._scan.set_InterferometerOffset(735)
+            _image = self._scan.Start()
+            self._channel = {}
+            for c in channel_names:
+                self._channel[c] = _image.GetChannel(c)
+            print('Scanning...')
+            while not self._scan.IsCompleted and not self._wait_for_injection:
+                self.set_progress(self._scan.Progress)
+                self.set_data(self._channel[self.afm_channel].GetData())
+                time.sleep(0.1)
+            if self._scan.IsCompleted and not self._aborted:
+                self._meas_completed = True
+                _data = {}
+                for c in self._channel.keys():
+                    _data[c] = self._channel[c].GetData()
+                self.neaMic.RegulatorOff()
+                print('Done!')
+                time.sleep(0.5)
+                return _data
+            else:
+                self._scan.Cancel()
+                self.neaMic.RegulatorOff()
+                self._meas_completed = False
+                return {}
